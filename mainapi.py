@@ -9,7 +9,7 @@ import json
 #  Cấu hình chung
 # -------------------
 WINDOW_WIDTH  = 1024
-WINDOW_HEIGHT = 768
+WINDOW_HEIGHT = 900
 FPS = 30
 
 # Màu sắc (R, G, B)
