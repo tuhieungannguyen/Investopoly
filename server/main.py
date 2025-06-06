@@ -47,8 +47,13 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
     await manager.send_to_player(room_id, player_name, {
         "type": "player_joined",
         "player": player_name,
-        "players": list(state.players[room_id].keys()),
-        "portfolio": state.players[room_id][player_name].model_dump(),  # ✅ sửa đúng người mới
+        "players": [
+            {
+                "player_name": p.player_name,
+                "current_position": p.current_position
+            } for p in state.players[room_id].values()
+        ],
+        "portfolio": state.players[room_id][player_name].model_dump(),
         "leaderboard": [
             {"player": p.player_name, "net_worth": p.net_worth}
             for p in state.players[room_id].values()
@@ -61,8 +66,13 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
             await manager.send_to_player(room_id, other, {
                 "type": "player_joined",
                 "player": player_name,
-                "players": list(state.players[room_id].keys()),
-                "portfolio": state.players[room_id][other].dict(),
+                "players": [
+                    {
+                        "player_name": p.player_name,
+                        "current_position": p.current_position
+                    } for p in state.players[room_id].values()
+                ],
+                "portfolio": state.players[room_id][other].model_dump(),
                 "leaderboard": [
                     {"player": p.player_name, "net_worth": p.net_worth}
                     for p in state.players[room_id].values()
