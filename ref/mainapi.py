@@ -42,6 +42,7 @@ class Tile:
         rect: pygame.Rect(x, y, width, height)
         text: chuỗi hiển thị trên ô (có thể \n xuống dòng)
         type_: một trong ['GO', 'REAL_ESTATE', 'STOCK', 'SAVINGS', 'SHOCK', 'CHANCE', 'QUIZ', 'TAX', 'JAIL', 'EMPTY']
+        
         """
         self.rect = rect
         self.text = text
