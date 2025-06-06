@@ -5,6 +5,10 @@ import websockets
 import asyncio
 import json
 import requests
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared')))
+from constants import TILE_MAP
 
 pygame.init()
 screen = pygame.display.set_mode((1200, 800))
@@ -95,7 +99,10 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
             surface.blit(text, (rect.x + 10, rect.y + 40 + i * 22))
     else:
         for i, item in enumerate(items):
-            text = f"{item[0]} - ${item[1]}"
+            if isinstance(item, dict):
+                text = f"{item.get('player_name', 'Unknown')} - Position: {item.get('current_position', 'Unknown')}"
+            else:
+                text = str(item)
             surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
 
 
@@ -117,11 +124,90 @@ def draw_action_buttons(surface):
         text = font.render(label, True, WHITE)
         surface.blit(text, text.get_rect(center=rect.center))
 
-def draw_map_placeholder(surface):
+def draw_map(surface):
     pygame.draw.rect(surface, WHITE, map_area)
     pygame.draw.rect(surface, BLACK, map_area, 2)
-    label = font_title.render("MAP HERE", True, GRAY)
-    surface.blit(label, label.get_rect(center=map_area.center))
+
+    tile_width = map_area.width // 5
+    tile_height = map_area.height // 5
+
+    # Vẽ các ô theo hình chữ nhật
+    for i, tile in enumerate(TILE_MAP):
+        if i < 5:  # Cột bên trái (đi lên)
+            x = map_area.x
+            y = map_area.y + map_area.height - (i + 1) * tile_height
+        elif i < 10:  # Hàng trên cùng (đi sang phải)
+            x = map_area.x + (i - 5) * tile_width
+            y = map_area.y
+        elif i < 15:  # Cột bên phải (đi xuống)
+            x = map_area.x + map_area.width - tile_width
+            y = map_area.y + (i - 10) * tile_height
+        else:  # Hàng dưới cùng (đi sang trái)
+            x = map_area.x + map_area.width - (i - 15 + 1) * tile_width
+            y = map_area.y + map_area.height - tile_height
+
+        tile_rect = pygame.Rect(x, y, tile_width, tile_height)
+        pygame.draw.rect(surface, LIGHT_GRAY, tile_rect)
+        pygame.draw.rect(surface, BLACK, tile_rect, 1)
+
+        label = font.render(tile, True, BLACK)
+        surface.blit(label, label.get_rect(center=tile_rect.center))
+
+def draw_map_with_players(surface, players):
+    pygame.draw.rect(surface, WHITE, map_area)
+    pygame.draw.rect(surface, BLACK, map_area, 2)
+
+    tile_width = map_area.width // 7  # Adjusted to fit 7 tiles horizontally
+    tile_height = map_area.height // 5
+
+    # Load avatars using absolute path
+    shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
+    avatars = [
+        pygame.image.load(os.path.join(shared_path, f"{i}.png")) for i in range(1, len(players) + 1)
+    ]
+
+    # Draw tiles
+    for i, tile in enumerate(TILE_MAP):
+        if i < 5:  # Left column (going up)
+            x = map_area.x
+            y = map_area.y + map_area.height - (i + 1) * tile_height
+        elif i < 11:  # Top row (going right, 7 tiles)
+            x = map_area.x + (i - 5) * tile_width
+            y = map_area.y
+        elif i < 15:  # Right column (going down)
+            x = map_area.x + map_area.width - tile_width
+            y = map_area.y + (i - 11) * tile_height
+        else:  # Bottom row (going left, 7 tiles)
+            x = map_area.x + map_area.width - (i - 15 + 1) * tile_width
+            y = map_area.y + map_area.height - tile_height
+
+        tile_rect = pygame.Rect(x, y, tile_width, tile_height)
+        pygame.draw.rect(surface, LIGHT_GRAY, tile_rect)
+        pygame.draw.rect(surface, BLACK, tile_rect, 1)
+
+        label = font.render(tile, True, BLACK)
+        surface.blit(label, label.get_rect(center=tile_rect.center))
+
+    # Draw players on their positions
+    for idx, player in enumerate(players):
+        if isinstance(player, dict) and "current_position" in player:
+            position = player["current_position"]
+            if position < 5:  # Left column (going up)
+                x = map_area.x
+                y = map_area.y + map_area.height - (position + 1) * tile_height
+            elif position < 11:  # Top row (going right, 7 tiles)
+                x = map_area.x + (position - 5) * tile_width
+                y = map_area.y
+            elif position < 15:  # Right column (going down)
+                x = map_area.x + map_area.width - tile_width
+                y = map_area.y + (position - 11) * tile_height
+            else:  # Bottom row (going left, 7 tiles)
+                x = map_area.x + map_area.width - (position - 15 + 1) * tile_width
+                y = map_area.y + map_area.height - tile_height
+
+            avatar = pygame.transform.scale(avatars[idx], (tile_width // 2, tile_height // 2))
+            surface.blit(avatar, (x + tile_width // 4, y + tile_height // 4))
+
 def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, portfolio=None):
     if not pygame.get_init():
         pygame.init()
@@ -150,7 +236,7 @@ def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, port
 
         # Vẽ UI
         draw_top_bar(screen, room_id, player_name)
-        draw_map_placeholder(screen)
+        draw_map_with_players(screen, ws_joined_players or joined_players)
         draw_box(event_box, "Players", screen, ws_joined_players or joined_players)
         draw_box(leaderboard_box, "Leaderboard", screen, ws_leaderboard or leaderboard)
         draw_box(portfolio_box, "Player Property", screen, ws_portfolio or portfolio, is_dict=True)
