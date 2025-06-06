@@ -1,78 +1,177 @@
-import asyncio
+import sys
 import pygame
-import websockets
+import requests
 import threading
+import asyncio
+import websockets
 import json
+import investopoly_main_ui
 
 # --- Config ---
-ROOM_ID = "demo1"
-PLAYER_NAME = "PlayerA"
-WS_URL = f"ws://localhost:8000/ws/{ROOM_ID}/{PLAYER_NAME}"
+SERVER = "http://localhost:8000"
+WS_URL_BASE = "ws://localhost:8000/ws"
 
-# --- Khởi tạo Pygame ---
+# --- Colors ---
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (200, 200, 200)
+BLUE = (0, 100, 255)
+GREEN = (0, 150, 0)
+RED = (200, 0, 0)
+LIGHT_GRAY = (230, 230, 230)
+
+# --- Flags and State ---
+should_switch_to_ui = False
+is_host = False
+room_id = ''
+player_name = ''
+active_input = None
+status = ''
+joined_players = []
+leaderboard = []
+portfolio = {}
+messages = []
+
+# --- Init Pygame ---
 pygame.init()
-screen = pygame.display.set_mode((800, 600))
-pygame.display.set_caption(f"Investopoly - {PLAYER_NAME}")
-font = pygame.font.SysFont(None, 30)
+font_title = pygame.font.SysFont(None, 32, bold=True)
+font = pygame.font.SysFont(None, 28)
+big_font = pygame.font.SysFont(None, 44)
+screen = pygame.display.set_mode((700, 500))
+pygame.display.set_caption("Investopoly")
 
-messages = [f"Đang kết nối tới phòng {ROOM_ID}..."]
+# --- Input Boxes ---
+input_box_room = pygame.Rect(220, 150, 240, 36)
+input_box_name = pygame.Rect(220, 210, 240, 36)
+btn_create = pygame.Rect(200, 280, 150, 40)
 
-# --- Vẽ thông báo ---
-def draw_screen():
-    screen.fill((255, 255, 255))
-    y = 30
-    for msg in messages[-18:]:
-        text = font.render(msg, True, (0, 0, 0))
-        screen.blit(text, (30, y))
-        y += 28
+# --- Draw Lobby UI ---
+def draw_lobby():
+    screen.fill(WHITE)
+    title = big_font.render("Investopoly", True, BLUE)
+    screen.blit(title, (screen.get_width() // 2 - title.get_width() // 2, 50))
+
+    screen.blit(font.render("Room ID:", True, BLACK), (100, 158))
+    screen.blit(font.render("Your Name:", True, BLACK), (100, 218))
+    pygame.draw.rect(screen, GRAY, input_box_room)
+    pygame.draw.rect(screen, GRAY, input_box_name)
+    screen.blit(font.render(room_id, True, BLACK), (input_box_room.x + 5, input_box_room.y + 5))
+    screen.blit(font.render(player_name, True, BLACK), (input_box_name.x + 5, input_box_name.y + 5))
+
+    pygame.draw.rect(screen, BLUE, btn_create)
+    screen.blit(font.render("Create or Join", True, WHITE), (btn_create.x + 10, btn_create.y + 10))
+    screen.blit(font.render(status, True, RED if "lỗi" in status.lower() else GREEN), (50, 340))
+
     pygame.display.flip()
 
-# --- Xử lý broadcast từ server ---
-def handle_message(data: dict):
-    msg_type = data.get("type")
-    if msg_type == "player_joined":
-        messages.append(f">>> {data['player']} đã tham gia.")
-    elif msg_type == "game_started":
-        messages.append(f">>> Trò chơi bắt đầu. Người chơi đầu tiên: {data['current_player']}")
-    elif msg_type == "player_rolled":
-        r = data['result']
-        messages.append(f"{r['player']} tung xúc xắc: {r['dice']} → {r['tile']}")
-        if r['effect']:
-            messages.append(f"  ↳ {r['effect']}")
-    elif msg_type == "next_turn":
-        messages.append(f"==> Lượt tiếp theo: {data['current_player']} (Vòng {data['round']})")
-    elif msg_type == "game_ended":
-        messages.append("🎯 Trò chơi kết thúc! Bảng xếp hạng:")
-        for rank, p in enumerate(data["leaderboard"], 1):
-            messages.append(f"  #{rank}: {p['player']} - ${p['net_worth']}")
-    else:
-        messages.append(f"[Server]: {data}")
+# --- WebSocket Listener ---
+async def connect_and_listen(room_id, player_name):
+    global should_switch_to_ui, is_host, leaderboard, portfolio, joined_players
 
-# --- Kết nối WebSocket ---
-async def listen_websocket():
-    async with websockets.connect(WS_URL) as ws:
+    uri = f"{WS_URL_BASE}/{room_id}/{player_name}"
+    async with websockets.connect(uri) as ws:
+        try:
+            requests.post(f"{SERVER}/join", json={"room_id": room_id, "player_name": player_name})
+        except Exception as e:
+            print("❗ Failed to join room:", e)
+
+        ui_launched = False  
+        
         while True:
             raw = await ws.recv()
             try:
-                msg = json.loads(raw)
-                handle_message(msg)
-            except:
-                messages.append(f"[Raw] {raw}")
+                data = json.loads(raw)
+                t = data.get("type")
 
+                if t == "player_joined":
+                    joined_players = data["players"]
+                    messages.append(f">>> {data['player']} đã tham gia.")
+                    leaderboard = [(p["player"], p["net_worth"]) for p in data.get("leaderboard", [])]
+                    portfolio = data.get("portfolio", {})
+                    
+                    if data['player'] == player_name:
+                        is_host = (player_name == joined_players[0])
+                        print("✅ Received player data.")
+                        should_switch_to_ui = True  # Trigger screen switch
+                        ui_launched = True
+
+                elif t == "game_started":
+                    messages.append(f"Game bắt đầu. {data['current_player']} đi trước.")
+                elif t == "player_rolled":
+                    r = data["result"]
+                    messages.append(f"{r['player']} tung {r['dice']} → {r['tile']}")
+                    if r['effect']:
+                        messages.append(f"↳ {r['effect']}")
+                elif t == "next_turn":
+                    messages.append(f"Lượt kế tiếp: {data['current_player']}")
+                elif t == "game_ended":
+                    messages.append("🎯 Game kết thúc!")
+                    for rank, p in enumerate(data["leaderboard"], 1):
+                        messages.append(f"#{rank}: {p['player']} - ${p['net_worth']}")
+            except Exception as e:
+                messages.append(f"[Lỗi nhận WS]: {e}")
+
+# --- Start WS Thread ---
 def start_ws_thread():
-    asyncio.run(listen_websocket())
+    threading.Thread(target=lambda: asyncio.run(connect_and_listen(room_id, player_name)), daemon=True).start()
 
-# --- Khởi chạy WebSocket trong luồng nền ---
-threading.Thread(target=start_ws_thread, daemon=True).start()
+# --- Main Loop ---
+def main():
+    global room_id, player_name, active_input, status, should_switch_to_ui
 
-# --- Main loop Pygame ---
-clock = pygame.time.Clock()
-running = True
-while running:
-    draw_screen()
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+    clock = pygame.time.Clock()
+    running = True
+
+    while running:
+        draw_lobby()
+
+        if should_switch_to_ui:
+            print("🔄 Switching to main UI...")
+            pygame.display.quit()
+            pygame.display.init()
+            pygame.font.init()
+            investopoly_main_ui.run_ui(room_id, player_name, joined_players, is_host, leaderboard, portfolio)
             running = False
-    clock.tick(30)
+            break
 
-pygame.quit()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if input_box_room.collidepoint(event.pos):
+                    active_input = "room"
+                elif input_box_name.collidepoint(event.pos):
+                    active_input = "name"
+                elif btn_create.collidepoint(event.pos):
+                    if room_id and player_name:
+                        try:
+                            r = requests.post(f"{SERVER}/create", json={"room_id": room_id, "host_name": player_name})
+                            if r.status_code == 200:
+                                status = f"Room {room_id} create"
+                            elif "exists" in r.text or r.status_code == 400:
+                                status = f"Room {room_id} existed. Joining..."
+                            else:
+                                status = "❗ Lỗi tạo phòng"
+                            start_ws_thread()
+                        except Exception as e:
+                            status = f"❗ Lỗi kết nối: {e}"
+
+            elif event.type == pygame.KEYDOWN:
+                if active_input == "room":
+                    if event.key == pygame.K_BACKSPACE:
+                        room_id = room_id[:-1]
+                    else:
+                        room_id += event.unicode
+                elif active_input == "name":
+                    if event.key == pygame.K_BACKSPACE:
+                        player_name = player_name[:-1]
+                    else:
+                        player_name += event.unicode
+
+        clock.tick(30)
+
+    pygame.quit()
+
+# --- Run ---
+if __name__ == "__main__":
+    main()

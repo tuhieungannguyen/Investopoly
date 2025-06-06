@@ -43,6 +43,33 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
         )
         state.rooms[room_id].roomMember.append(player_name)
 
+    # ✅ Gửi danh sách người chơi hiện tại ngay sau khi kết nối
+    await manager.send_to_player(room_id, player_name, {
+        "type": "player_joined",
+        "player": player_name,
+        "players": list(state.players[room_id].keys()),
+        "portfolio": state.players[room_id][player_name].model_dump(),  # ✅ sửa đúng người mới
+        "leaderboard": [
+            {"player": p.player_name, "net_worth": p.net_worth}
+            for p in state.players[room_id].values()
+        ]
+    })
+
+    # ✅ Gửi cho người khác biết có người mới
+    for other in state.players[room_id]:
+        if other != player_name:
+            await manager.send_to_player(room_id, other, {
+                "type": "player_joined",
+                "player": player_name,
+                "players": list(state.players[room_id].keys()),
+                "portfolio": state.players[room_id][other].dict(),
+                "leaderboard": [
+                    {"player": p.player_name, "net_worth": p.net_worth}
+                    for p in state.players[room_id].values()
+                ]
+            })
+
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -50,13 +77,14 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
 
             if action == "broadcast":
                 await manager.broadcast(room_id, data)
-            elif action == "notify":  # gửi riêng cho một người
+            elif action == "notify":
                 target = data.get("target")
                 await manager.send_to_player(room_id, target, data)
             else:
                 await manager.broadcast(room_id, {"from": player_name, "data": data})
     except WebSocketDisconnect:
         manager.disconnect(room_id, player_name)
+
 
 @app.post("/join")
 async def join_game(request: JoinRoomRequest):
@@ -65,13 +93,8 @@ async def join_game(request: JoinRoomRequest):
 
     state.add_player_to_room(room_id, player_name)
 
-    await manager.broadcast(room_id, {
-        "type": "player_joined",
-        "player": player_name,
-        "players": list(state.players[room_id].keys())
-    })
-
     return {"message": f"{player_name} joined room {room_id}"}
+
 
 @app.post("/start")
 async def start_game(request: StartGameRequest):
