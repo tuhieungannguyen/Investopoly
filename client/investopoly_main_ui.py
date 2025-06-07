@@ -28,10 +28,10 @@ GREEN = (34, 139, 34)
 # Vị trí layout
 top_bar = pygame.Rect(20, 20, 1160, 50)
 map_area = pygame.Rect(20, 80, 850, 600)
-event_box = pygame.Rect(890, 80, 290, 150)
-leaderboard_box = pygame.Rect(890, 250, 290, 200)
-portfolio_box = pygame.Rect(890, 470, 290, 210)
-action_bar = pygame.Rect(20, 700, 1160, 70)
+event_box = pygame.Rect(850, 80, 325, 250)
+leaderboard_box = pygame.Rect(850, 350, 325, 250)
+portfolio_box = pygame.Rect(850, 620, 320, 260)
+action_bar = pygame.Rect(20, 900, 1160, 70)
 
 # Dữ liệu mẫu
 event_logs = ["Game started", "Player1 rolled 6", "Player1 landed on GO"]
@@ -154,11 +154,11 @@ def draw_map(surface):
         surface.blit(label, label.get_rect(center=tile_rect.center))
 
 def draw_map_with_players(surface, players):
-    pygame.draw.rect(surface, WHITE, map_area)
-    pygame.draw.rect(surface, BLACK, map_area, 2)
-
-    tile_width = map_area.width // 7  # Adjusted to fit 7 tiles horizontally
-    tile_height = map_area.height // 5
+    # Load the board image as the map
+    board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board.png'))
+    board_image = pygame.image.load(board_image_path)
+    board_image = pygame.transform.scale(board_image, (800, 800))
+    surface.blit(board_image, (map_area.x, map_area.y))
 
     # Load avatars using absolute path
     shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
@@ -166,44 +166,25 @@ def draw_map_with_players(surface, players):
         pygame.image.load(os.path.join(shared_path, f"{i}.png")) for i in range(1, len(players) + 1)
     ]
 
-    # Draw tiles
-    for i, tile in enumerate(TILE_MAP):
-        if i < 5:  # Left column (going up)
-            x = map_area.x
-            y = map_area.y + map_area.height - (i + 1) * tile_height
-        elif i < 11:  # Top row (going right, 7 tiles)
-            x = map_area.x + (i - 5) * tile_width
-            y = map_area.y
-        elif i < 15:  # Right column (going down)
-            x = map_area.x + map_area.width - tile_width
-            y = map_area.y + (i - 11) * tile_height
-        else:  # Bottom row (going left, 7 tiles)
-            x = map_area.x + map_area.width - (i - 15 + 1) * tile_width
-            y = map_area.y + map_area.height - tile_height
+    # Calculate positions based on the board layout (counter-clockwise starting from GO)
+    tile_width = 800 // 7  # Tile width based on scaled board dimensions
+    tile_height = 800 // 5  # Tile height based on scaled board dimensions
 
-        tile_rect = pygame.Rect(x, y, tile_width, tile_height)
-        pygame.draw.rect(surface, LIGHT_GRAY, tile_rect)
-        pygame.draw.rect(surface, BLACK, tile_rect, 1)
-
-        label = font.render(tile, True, BLACK)
-        surface.blit(label, label.get_rect(center=tile_rect.center))
-
-    # Draw players on their positions
     for idx, player in enumerate(players):
         if isinstance(player, dict) and "current_position" in player:
             position = player["current_position"]
             if position < 5:  # Left column (going up)
                 x = map_area.x
-                y = map_area.y + map_area.height - (position + 1) * tile_height
+                y = map_area.y + 800 - (position + 1) * tile_height
             elif position < 11:  # Top row (going right, 7 tiles)
                 x = map_area.x + (position - 5) * tile_width
                 y = map_area.y
             elif position < 15:  # Right column (going down)
-                x = map_area.x + map_area.width - tile_width
+                x = map_area.x + 800 - tile_width
                 y = map_area.y + (position - 11) * tile_height
             else:  # Bottom row (going left, 7 tiles)
-                x = map_area.x + map_area.width - (position - 15 + 1) * tile_width
-                y = map_area.y + map_area.height - tile_height
+                x = map_area.x + 800 - (position - 15 + 1) * tile_width
+                y = map_area.y + 800 - tile_height
 
             avatar = pygame.transform.scale(avatars[idx], (tile_width // 2, tile_height // 2))
             surface.blit(avatar, (x + tile_width // 4, y + tile_height // 4))
@@ -213,12 +194,14 @@ def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, port
         pygame.init()
     if not pygame.display.get_init():
         pygame.display.init()
-    
-    screen = pygame.display.set_mode((1200, 800))
+
+    # Adjust the window size to match the board dimensions
+    screen = pygame.display.set_mode((1200, 1000))
     pygame.display.set_caption("Investopoly - Main Game UI")
+
     threading.Thread(target=lambda: asyncio.run(listen_ws(room_id, player_name)), daemon=True).start()
     running = True
-    start_btn = pygame.Rect(950, 720, 180, 50)  # Khai báo ở đầu
+    start_btn = pygame.Rect(850, 920, 120, 50)  # Adjusted position for the start button
 
     while running:
         screen.fill(WHITE)

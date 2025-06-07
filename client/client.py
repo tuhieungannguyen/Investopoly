@@ -6,6 +6,7 @@ import asyncio
 import websockets
 import json
 import investopoly_main_ui
+import os  # <-- Import os module
 
 # --- Config ---
 SERVER = "http://localhost:8000"
@@ -37,22 +38,33 @@ pygame.init()
 font_title = pygame.font.SysFont(None, 32, bold=True)
 font = pygame.font.SysFont(None, 28)
 big_font = pygame.font.SysFont(None, 44)
-screen = pygame.display.set_mode((700, 500))
+screen = pygame.display.set_mode((600, 300))
 pygame.display.set_caption("Investopoly")
 
 # --- Input Boxes ---
-input_box_room = pygame.Rect(220, 150, 240, 36)
-input_box_name = pygame.Rect(220, 210, 240, 36)
-btn_create = pygame.Rect(200, 280, 150, 40)
+input_box_room = pygame.Rect(220, 120, 240, 36)
+input_box_name = pygame.Rect(220, 180, 240, 36)
+btn_create = pygame.Rect(270, 250, 150, 40)
 
 # --- Draw Lobby UI ---
 def draw_lobby():
     screen.fill(WHITE)
-    title = big_font.render("Investopoly", True, BLUE)
-    screen.blit(title, (screen.get_width() // 2 - title.get_width() // 2, 50))
+    # Replace title text with an image
+    margin = 20
+    title_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/INVESTOPOLY.png'))
+    title_image = pygame.image.load(title_image_path)
 
-    screen.blit(font.render("Room ID:", True, BLACK), (100, 158))
-    screen.blit(font.render("Your Name:", True, BLACK), (100, 218))
+    # Tính chiều rộng mới có trừ margin 2 bên
+    scaled_width = screen.get_width() - 2 * margin
+    scaled_height = screen.get_height() // 4
+
+    title_image = pygame.transform.scale(title_image, (scaled_width, scaled_height))
+
+    # Vẽ hình với margin 2 bên
+    screen.blit(title_image, (margin, 20))
+
+    screen.blit(font.render("Room ID:", True, BLACK), (100, 130))
+    screen.blit(font.render("Your Name:", True, BLACK), (100, 190))
     pygame.draw.rect(screen, GRAY, input_box_room)
     pygame.draw.rect(screen, GRAY, input_box_name)
     screen.blit(font.render(room_id, True, BLACK), (input_box_room.x + 5, input_box_room.y + 5))
