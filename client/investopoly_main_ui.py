@@ -38,21 +38,44 @@ ws_joined_players = []
 ws_leaderboard = []
 ws_portfolio = {}
 
+# Define global variable for current round
+current_round = None
+current_player = None
+
 async def listen_ws(room_id, player_name):
-    global ws_joined_players, ws_leaderboard, ws_portfolio
+    global ws_joined_players, ws_leaderboard, ws_portfolio, ws_notifications, current_player, current_round
+    ws_notifications = []  # Initialize notifications list
     uri = f"ws://localhost:8000/ws/{room_id}/{player_name}"
     async with websockets.connect(uri) as ws:
         while True:
             try:
-                data = json.loads(await ws.recv())
-                if data["type"] == "player_joined":
-                    ws_joined_players = data["players"]
-                    ws_leaderboard = [(p["player"], p["net_worth"]) for p in data.get("leaderboard", [])]
-                    if data["player"] == player_name:
-                        ws_portfolio = data.get("portfolio", {})
+                data = await ws.recv()
+                message = json.loads(data)
+
+                if message["type"] == "game_started":
+                    ws_notifications.append(f"Notification: {message['message']}\nRound: {message['round']}\nCurrent Player: {message['current_player']}")
+                    current_player = message["current_player"]
+                    current_round = message["round"]
+
+                elif message["type"] == "next_turn":
+                    ws_notifications.append(f"Notification: {message['message']}")
+                    current_player = message["current_player"]
+                    current_round = message["round"]
+
+                elif message["type"] == "player_rolled":
+                    ws_notifications.append(f"Notification: {message['message']}")
+
+                elif message["type"] == "player_joined":
+                    ws_notifications.append(f"{message['player']} joined the room.")
+                    ws_joined_players = message["players"]
+                    # Validate leaderboard data before updating
+                    if "leaderboard" in message and message["leaderboard"]:
+                        print("Received leaderboard data:", message["leaderboard"])  # Debug log
+                        ws_leaderboard = message["leaderboard"]
+
             except Exception as e:
-                print("[WebSocket Error]", e)
-                break
+                print(f"WebSocket error: {e}")
+
 def draw_box(rect, title, surface, items=None, is_dict=False):
     pygame.draw.rect(surface, LIGHT_GRAY, rect)
     pygame.draw.rect(surface, BLACK, rect, 2)
@@ -61,57 +84,78 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
     if not items:
         return
 
-    if is_dict:
-        lines = []
-
-        # Format các trường đặc biệt đẹp hơn
-        def fmt_money(key, value):
-            return f"{key.replace('_', ' ').capitalize()}: ${float(value):,.2f}"
-
-        for key in [
-            "cash", "saving", "net_worth",
-            "current_position", "round_played", "stocks", "estates"
-        ]:
-            val = items.get(key, "-")
-
-            if isinstance(val, (int, float)) and key != "current_position":
-                line = fmt_money(key, val)
-            elif isinstance(val, dict):
-                line = f"{key.capitalize()}: {len(val)}"
-            elif isinstance(val, list):
-                line = f"{key.capitalize()}: {len(val)}"
-            else:
-                line = f"{key.replace('_', ' ').capitalize()}: {val}"
-
-            lines.append(line)
-
-        for i, line in enumerate(lines):
-            text = font.render(line, True, BLACK)
-            surface.blit(text, (rect.x + 10, rect.y + 40 + i * 22))
-    else:
+    if title == "Notification":
         for i, item in enumerate(items):
             if isinstance(item, dict):
-                text = f"{item.get('player_name', 'Unknown')} - Position: {item.get('current_position', 'Unknown')}"
+                text = f"Notification: {item.get('player_name', 'Unknown')} - Position: {item.get('current_position', 'Unknown')}"
+            else:
+                text = f"Notification: {str(item)}"
+            surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
+    elif title == "Leaderboard":
+        for i, item in enumerate(items):
+            if isinstance(item, dict):
+                text = f"{item.get('player', 'Unknown')} - Net Worth: ${item.get('net_worth', 'Unknown'):.2f}"
             else:
                 text = str(item)
             surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
+    else:
+        if is_dict:
+            lines = []
+            def fmt_money(key, value):
+                return f"{key.replace('_', ' ').capitalize()}: ${float(value):,.2f}"
+
+            for key in ["cash", "saving", "net_worth", "current_position", "round_played", "stocks", "estates"]:
+                val = items.get(key, "-")
+                if isinstance(val, (int, float)) and key != "current_position":
+                    line = fmt_money(key, val)
+                elif isinstance(val, dict):
+                    line = f"{key.capitalize()}: {len(val)}"
+                elif isinstance(val, list):
+                    line = f"{key.capitalize()}: {len(val)}"
+                else:
+                    line = f"{key.replace('_', ' ').capitalize()}: {val}"
+                lines.append(line)
+
+            for i, line in enumerate(lines):
+                text = font.render(line, True, BLACK)
+                surface.blit(text, (rect.x + 10, rect.y + 40 + i * 22))
+        else:
+            for i, item in enumerate(items):
+                if isinstance(item, dict):
+                    text = f"{item.get('player_name', 'Unknown')} - Position: {item.get('current_position', 'Unknown')}"
+                else:
+                    text = str(item)
+                surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
 
 
 
-def draw_top_bar(surface, room, player):
+def draw_top_bar(surface, room, player, round):
     pygame.draw.rect(surface, BLUE, top_bar)
     pygame.draw.rect(surface, BLACK, top_bar, 2)
-    label = font_title.render(f"Room: {room} | Player: {player}", True, WHITE)
+    label = font_title.render(f"Room: {room} | Player: {player} | Round: {round}", True, WHITE)
     surface.blit(label, (top_bar.x + 20, top_bar.y + 10))
 
 def draw_action_buttons(surface):
     pygame.draw.rect(surface, GRAY, action_bar)
     pygame.draw.rect(surface, BLACK, action_bar, 2)
-    buttons = ["Roll Dice", "Buy/Sell", "End Turn"]
+    buttons = ["Roll Dice", "Buy", "Sell", "End Turn"]
+    button_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/button_1.png'))
+    button_image = pygame.image.load(button_image_path)
+
+    # Scale the button image proportionally to fit the button area
+    image_width, image_height = button_image.get_size()
+    scale_factor = min(150 / image_width, 40 / image_height)
+    scaled_width = int(image_width * scale_factor)
+    scaled_height = int(image_height * scale_factor)
+    button_image = pygame.transform.scale(button_image, (scaled_width, scaled_height))
+
     for i, label in enumerate(buttons):
         rect = pygame.Rect(50 + i * 200, action_bar.y + 15, 150, 40)
-        pygame.draw.rect(surface, GREEN, rect)
-        pygame.draw.rect(surface, BLACK, rect, 2)
+        # Center the button image within the rect
+        image_x = rect.x + (rect.width - scaled_width) // 2
+        image_y = rect.y + (rect.height - scaled_height) // 2
+        surface.blit(button_image, (image_x, image_y))
+        # Center the text within the rect
         text = font.render(label, True, WHITE)
         surface.blit(text, text.get_rect(center=rect.center))
 
@@ -183,10 +227,12 @@ def draw_map_with_players(surface, players):
             else:  # Bottom row (going left)
                 x, y = map_area.x + 800 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 800 - horizontal_tile_size[1]
 
+            
             avatar = pygame.transform.scale(avatars[idx], (corner_tile_size[0] // 3, corner_tile_size[1] // 3))
             surface.blit(avatar, (x + corner_tile_size[0] // 4, y + corner_tile_size[1] // 4))
 
-def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, portfolio=None):
+def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=None):
+    global current_player
     if not pygame.get_init():
         pygame.init()
     if not pygame.display.get_init():
@@ -207,27 +253,67 @@ def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, port
         for e in events:
             if e.type == pygame.QUIT:
                 running = False
-            elif e.type == pygame.MOUSEBUTTONDOWN and is_host:
-                if start_btn.collidepoint(e.pos):
+            elif e.type == pygame.MOUSEBUTTONDOWN:
+                if is_host_runtime and start_btn and start_btn.collidepoint(e.pos):
                     try:
-                        requests.post(f"http://localhost:8000/start", json={"room_id": room_id})
+                        print("Host clicked the START button.")  # Debug log
+                        response = requests.post(f"http://localhost:8000/start", json={"room_id": room_id})
+                        if response.status_code == 200:
+                            print("Game started successfully.")
+                            start_btn = None  # Remove the START button after the game starts
+                        else:
+                            print(f"[Error] Backend response: {response.text}")
                     except Exception as err:
                         print(f"[Error] Failed to start game: {err}")
 
+        # Define current_players before using it
+        current_players = ws_joined_players if ws_joined_players else joined_players
+
+        # Debug log for player_name and current_players
+        # print(f"Player name: {player_name}")
+        # print(f"Current players: {current_players}")
+
+        # Update host determination logic
+        if current_players and isinstance(current_players[0], dict):
+            is_host_runtime = (player_name == current_players[0].get('player_name'))
+        else:
+            is_host_runtime = (player_name == current_players[0]) if current_players else False
+
+        # print(f"Is host runtime: {is_host_runtime}")
+
         # Vẽ UI
-        draw_top_bar(screen, room_id, player_name)
+        draw_top_bar(screen, room_id, player_name, current_round)
         draw_map_with_players(screen, ws_joined_players or joined_players)
-        draw_box(event_box, "Notification", screen, ws_joined_players or joined_players)
+        draw_box(event_box, "Notification", screen, ws_notifications)  # Display notifications
         draw_box(leaderboard_box, "Leaderboard", screen, ws_leaderboard or leaderboard)
         draw_box(portfolio_box, "Player Property", screen, ws_portfolio or portfolio, is_dict=True)
         draw_action_buttons(screen)
 
         # Nút start chỉ nếu là host
-        if is_host:
+        if is_host_runtime and start_btn:
+            # print("Displaying START button for host.")  # Debug log
             pygame.draw.rect(screen, GREEN, start_btn)
             pygame.draw.rect(screen, BLACK, start_btn, 2)
             text = font.render("START", True, WHITE)
             screen.blit(text, text.get_rect(center=start_btn.center))
+
+        # Display "Roll Dice" button if it's the current player's turn
+        if player_name == current_player:
+            roll_button = pygame.Rect(50, action_bar.y + 15, 150, 40)
+            pygame.draw.rect(screen, GREEN, roll_button)
+            pygame.draw.rect(screen, BLACK, roll_button, 2)
+            text = font.render("Roll Dice", True, WHITE)
+            screen.blit(text, text.get_rect(center=roll_button.center))
+
+            # Handle click event for "Roll Dice" button
+            for e in events:
+                if e.type == pygame.MOUSEBUTTONDOWN and roll_button.collidepoint(e.pos):
+                    try:
+                        response = requests.post("http://localhost:8000/roll", json={"room_id": room_id, "player_name": player_name})
+                        if response.status_code != 200:
+                            print("Error rolling dice:", response.json())
+                    except Exception as err:
+                        print(f"Error sending roll request: {err}")
 
         pygame.display.flip()
         clock.tick(30)

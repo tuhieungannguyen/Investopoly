@@ -50,8 +50,7 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
         "players": [
             {
                 "player_name": p.player_name,
-                # "current_position": p.current_position
-                "current_position": 19
+                "current_position": p.current_position
             } for p in state.players[room_id].values()
         ],
         "portfolio": state.players[room_id][player_name].model_dump(),
@@ -109,13 +108,14 @@ async def join_game(request: JoinRoomRequest):
 
 @app.post("/start")
 async def start_game(request: StartGameRequest):
-
     room_id = request.room_id
 
     state.start_game(room_id)
 
+    # Broadcast game start notification
     await manager.broadcast(room_id, {
         "type": "game_started",
+        "message": "Game has started!",
         "round": 1,
         "current_player": state.managers[room_id].current_player
     })
@@ -133,17 +133,21 @@ async def roll_dice(request: RollDiceRequest):
 
     result = state.process_turn(room_id)
 
+    # Broadcast roll result
     await manager.broadcast(room_id, {
         "type": "player_rolled",
-        "result": result
+        "result": result,
+        "message": f"{player_name} rolled the dice!"
     })
 
     state.end_turn(room_id)
 
+    # Broadcast next turn information
     await manager.broadcast(room_id, {
         "type": "next_turn",
         "round": state.managers[room_id].current_round,
-        "current_player": state.managers[room_id].current_player
+        "current_player": state.managers[room_id].current_player,
+        "message": f"Round {state.managers[room_id].current_round}, Current Player: {state.managers[room_id].current_player}"
     })
 
     return {"message": "Turn processed", "result": result}
