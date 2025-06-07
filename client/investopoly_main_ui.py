@@ -33,15 +33,6 @@ leaderboard_box = pygame.Rect(850, 350, 325, 250)
 portfolio_box = pygame.Rect(850, 620, 320, 260)
 action_bar = pygame.Rect(20, 900, 1160, 70)
 
-# Dữ liệu mẫu
-event_logs = ["Game started", "Player1 rolled 6", "Player1 landed on GO"]
-leaderboard = [("Player1", 4500), ("Player2", 3800), ("Player3", 3600)]
-portfolio = {
-    "Cash": 1200,
-    "Stocks": 800,
-    "Real Estate": 1500,
-    "Savings": 500
-}
 # ws variable
 ws_joined_players = []
 ws_leaderboard = []
@@ -155,7 +146,7 @@ def draw_map(surface):
 
 def draw_map_with_players(surface, players):
     # Load the board image as the map
-    board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board.png'))
+    board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board_new.png'))
     board_image = pygame.image.load(board_image_path)
     board_image = pygame.transform.scale(board_image, (800, 800))
     surface.blit(board_image, (map_area.x, map_area.y))
@@ -166,28 +157,34 @@ def draw_map_with_players(surface, players):
         pygame.image.load(os.path.join(shared_path, f"{i}.png")) for i in range(1, len(players) + 1)
     ]
 
-    # Calculate positions based on the board layout (counter-clockwise starting from GO)
-    tile_width = 800 // 7  # Tile width based on scaled board dimensions
-    tile_height = 800 // 5  # Tile height based on scaled board dimensions
+    # Define tile dimensions based on the scaled board
+    corner_tile_size = (172, 172)  # Corner tiles
+    vertical_tile_size = (172, 115)  # Vertical tiles
+    horizontal_tile_size = (115, 172)  # Horizontal tiles
 
     for idx, player in enumerate(players):
         if isinstance(player, dict) and "current_position" in player:
             position = player["current_position"]
-            if position < 5:  # Left column (going up)
-                x = map_area.x
-                y = map_area.y + 800 - (position + 1) * tile_height
-            elif position < 11:  # Top row (going right, 7 tiles)
-                x = map_area.x + (position - 5) * tile_width
-                y = map_area.y
-            elif position < 15:  # Right column (going down)
-                x = map_area.x + 800 - tile_width
-                y = map_area.y + (position - 11) * tile_height
-            else:  # Bottom row (going left, 7 tiles)
-                x = map_area.x + 800 - (position - 15 + 1) * tile_width
-                y = map_area.y + 800 - tile_height
 
-            avatar = pygame.transform.scale(avatars[idx], (tile_width // 2, tile_height // 2))
-            surface.blit(avatar, (x + tile_width // 4, y + tile_height // 4))
+            if position == 0:  # GO
+                x, y = map_area.x, map_area.y + 800 - corner_tile_size[1]
+            elif position < 5:  # Left column (going up)
+                x, y = map_area.x, map_area.y + 800 - (position * vertical_tile_size[1]) - corner_tile_size[1]
+            elif position == 5:  # Jail Visit
+                x, y = map_area.x, map_area.y
+            elif position < 10:  # Top row (going right)
+                x, y = map_area.x + ((position - 6) * horizontal_tile_size[0]) + corner_tile_size[0], map_area.y
+            elif position == 10:  # Quizzes (Education)
+                x, y = map_area.x + 800 - corner_tile_size[0], map_area.y
+            elif position < 15:  # Right column (going down)
+                x, y = map_area.x + 800 - vertical_tile_size[0], map_area.y + ((position - 11) * vertical_tile_size[1]) + corner_tile_size[1]
+            elif position == 15:  # Jail (Challenge)
+                x, y = map_area.x + 800 - corner_tile_size[0], map_area.y + 800 - corner_tile_size[1]
+            else:  # Bottom row (going left)
+                x, y = map_area.x + 800 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 800 - horizontal_tile_size[1]
+
+            avatar = pygame.transform.scale(avatars[idx], (corner_tile_size[0] // 3, corner_tile_size[1] // 3))
+            surface.blit(avatar, (x + corner_tile_size[0] // 4, y + corner_tile_size[1] // 4))
 
 def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, portfolio=None):
     if not pygame.get_init():
@@ -220,7 +217,7 @@ def run_ui(room_id, player_name, joined_players, is_host, leaderboard=None, port
         # Vẽ UI
         draw_top_bar(screen, room_id, player_name)
         draw_map_with_players(screen, ws_joined_players or joined_players)
-        draw_box(event_box, "Players", screen, ws_joined_players or joined_players)
+        draw_box(event_box, "Notification", screen, ws_joined_players or joined_players)
         draw_box(leaderboard_box, "Leaderboard", screen, ws_leaderboard or leaderboard)
         draw_box(portfolio_box, "Player Property", screen, ws_portfolio or portfolio, is_dict=True)
         draw_action_buttons(screen)

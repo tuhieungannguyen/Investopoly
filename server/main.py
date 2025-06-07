@@ -50,7 +50,8 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
         "players": [
             {
                 "player_name": p.player_name,
-                "current_position": p.current_position
+                # "current_position": p.current_position
+                "current_position": 19
             } for p in state.players[room_id].values()
         ],
         "portfolio": state.players[room_id][player_name].model_dump(),
