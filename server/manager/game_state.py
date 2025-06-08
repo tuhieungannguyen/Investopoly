@@ -18,8 +18,6 @@ class GameState:
         self.chances: Dict[str, List[ChanceLog]] = {}
         self.transactions: Dict[str, List[Transaction]] = {}
         
-        
-
     def init_room(self, room_id: str, members: List[str]):
         self.rooms[room_id] = Room(roomId=room_id, roomMember=members, status="waiting")
         self.players[room_id] = {
@@ -59,7 +57,9 @@ class GameState:
         player = self.players[room_id][player_name]
         old_position = player.current_position
         new_position = (old_position + steps) % len(TILE_MAP)
-
+        print("step", steps)
+        print(f"{player_name} moved from {TILE_MAP[old_position]} to {TILE_MAP[new_position]}")
+                
         # Check if the player passed the GO tile
         if new_position < old_position:
             player.cash += GO_REWARD  # Add $200 to the player's cash
@@ -83,7 +83,7 @@ class GameState:
     def get_tile_owner(self, room_id: str, tile: str) -> Optional[str]:
         for estate in self.estates[room_id]:
             if estate.name == tile:
-                return estate.owner
+                return estate.owner_name
         return None
 
     def get_tile_value(self, tile: str) -> float:
