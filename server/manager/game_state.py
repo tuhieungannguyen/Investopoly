@@ -1,9 +1,11 @@
 from random import randint
 from typing import Dict, List, Optional
-from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP
+from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES  
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
 
 class GameState:
+    
+    # Khởi tạo các biến lưu trữ trạng thái game
     def __init__(self):
         self.rooms: Dict[str, Room] = {}
         self.players: Dict[str, Dict[str, Player]] = {}
@@ -15,6 +17,8 @@ class GameState:
         self.events: Dict[str, List[EventRecord]] = {}
         self.chances: Dict[str, List[ChanceLog]] = {}
         self.transactions: Dict[str, List[Transaction]] = {}
+        
+        
 
     def init_room(self, room_id: str, members: List[str]):
         self.rooms[room_id] = Room(roomId=room_id, roomMember=members, status="waiting")
@@ -28,7 +32,17 @@ class GameState:
             current_played=0,
             leader_board=[]
         )
-        self.estates[room_id] = []
+        self.estates[room_id] = [
+        Estate(
+        name=e["name"],
+        owner=None,
+        value=e["price"],
+        position=e["position"],
+        price=e["price"],
+        rent_price=e["rent_price"]
+        )
+            for e in ESTATES
+        ]
         self.stocks[room_id] = {}
         self.jails[room_id] = {}
         self.saving_records[room_id] = []
@@ -36,9 +50,11 @@ class GameState:
         self.chances[room_id] = []
         self.transactions[room_id] = []
 
+    # Hàm để tung xúc xắc, trả về số ngẫu nhiên từ 1 đến 6
     def roll_dice(self) -> int:
         return randint(1, 6)
-
+    
+    # Hàm để di chuyển người chơi đến ô mới dựa trên số xúc xắc
     def move_player(self, room_id: str, player_name: str, steps: int) -> dict:
         player = self.players[room_id][player_name]
         old_position = player.current_position
@@ -63,6 +79,7 @@ class GameState:
             "value": self.get_tile_value(tile)
         }
 
+    # Hàm để lấy chủ sở hữu của ô bất động sản
     def get_tile_owner(self, room_id: str, tile: str) -> Optional[str]:
         for estate in self.estates[room_id]:
             if estate.name == tile:
@@ -70,27 +87,15 @@ class GameState:
         return None
 
     def get_tile_value(self, tile: str) -> float:
-        # Example logic to get tile value
-        tile_values = {
-            "Park Place": 400,
-            "Boardwalk": 500,
-            # Add other tiles here
-        }
-        return tile_values.get(tile, 0)
-
-    def apply_tile_effect(self, room_id: str, player_name: str, tile: str) -> Optional[str]:
         """
-        This function is simplified. You'll need to implement full detail per tile type.
+        Trả về giá trị (price) của ô bất động sản nếu tồn tại, ngược lại trả về 0.
         """
-        if "Shock" in tile:
-            return self.apply_shock_event(room_id, player_name)
-        elif "Chance" in tile:
-            return self.apply_chance_event(room_id, player_name)
-        elif "Jail" in tile:
-            self.put_in_jail(room_id, player_name)
-            return f"{player_name} vào tù"
-        return None
-
+        for estate in ESTATES:
+            if estate["name"] == tile:
+                return estate["price"]
+        return 0.0
+   
+    # Random shock event
     def apply_shock_event(self, room_id: str, player_name: str) -> str:
         import random
         event = random.choice(SHOCK_EVENTS)
@@ -98,6 +103,8 @@ class GameState:
         # Cập nhật giá trị cổ phiếu, bất động sản dựa trên event
         return f"Sự kiện shock: {event['name']}"
 
+
+    # Apply chance event
     def apply_chance_event(self, room_id: str, player_name: str) -> str:
         import random
         player = self.players[room_id][player_name]
@@ -109,6 +116,7 @@ class GameState:
         self.chances[room_id].append(ChanceLog(name=chance["name"], owner=player_name, round=self.managers[room_id].current_round))
         return f"Cơ hội: {chance['name']}"
 
+    # Vao tu 
     def put_in_jail(self, room_id: str, player_name: str):
         jail_status = JailStatus(
             player_name=player_name,
@@ -118,32 +126,31 @@ class GameState:
         )
         self.jails[room_id][player_name] = jail_status
 
-    def buy_estate(self, room_id: str, player_name: str, estate_name: str, price: float):
+    # 
+    def buy_estate(self, room_id: str, player_name: str):
         player = self.players[room_id][player_name]
-        if player.cash >= price:
-            # Deduct money from the player
-            player.cash -= price
+        position = player.current_position
+        tile_name = TILE_MAP[position]
 
-            # Add the estate to the player's properties with all required fields
-            new_estate = Estate(
-                name=estate_name,
-                owner=player_name,
-                value=price,
-                position=player.current_position,  # Assuming position is the player's current position
-                price=price,
-                rent_price=price * 0.1  # Example rent price calculation
-            )
-            self.estates[room_id].append(new_estate)
+        # Tìm estate đúng ô người chơi đang đứng
+        estate = next((e for e in self.estates[room_id] if e.name == tile_name), None)
 
-            # Update the player's net worth
-            player.net_worth += price
+        if not estate:
+            return {"success": False, "message": f"{tile_name} không phải bất động sản."}
+        if estate.owner is not None:
+            return {"success": False, "message": f"{tile_name} đã có chủ sở hữu."}
+        if player.cash < estate.price:
+            return {"success": False, "message": "Không đủ tiền để mua bất động sản."}
 
-            # Update the leaderboard
-            self.update_leaderboard(room_id)
+        # Cập nhật sở hữu và tài sản
+        player.cash -= estate.price
+        estate.owner = player_name
+        player.net_worth += estate.price
 
-            return {"success": True, "message": f"{player_name} successfully bought {estate_name}."}
-        else:
-            return {"success": False, "message": "Insufficient funds to buy the estate."}
+        self.update_leaderboard(room_id)
+
+        return {"success": True, "message": f"{player_name} đã mua {tile_name} với giá {estate.price}$."}
+
 
     def update_leaderboard(self, room_id: str):
         self.managers[room_id].leader_board = sorted(
@@ -265,6 +272,7 @@ class GameState:
             manager.current_played = 0
 
     def end_game(self, room_id: str) -> dict:
+        
         """
         Kết thúc ván chơi → tính tài sản ròng → xếp hạng người chơi.
         """
@@ -276,7 +284,8 @@ class GameState:
                 for name, qty in player.stocks.items()
                 if name in self.stocks[room_id]
             ])
-            estate_value = len(player.estates) * 200  # có thể thay bằng lookup estate thực
+            estate_value = sum(e.value for e in self.estates[room_id] if e.owner == player.player_name)
+
             player.net_worth = round(player.cash + player.saving + stock_value + estate_value, 2)
 
             final_scores.append({
@@ -296,3 +305,27 @@ class GameState:
             "leaderboard": leaderboard,
             "summary": final_scores
         }
+
+    def get_player_position(self, room_id: str, player_name: str) -> Optional[int]:
+        """
+        Trả về vị trí hiện tại của người chơi trong phòng.
+        
+        :param room_id: ID của phòng
+        :param player_name: Tên người chơi
+        :return: Vị trí trên bản đồ (0-based index), hoặc None nếu không tìm thấy
+        """
+        if room_id in self.players and player_name in self.players[room_id]:
+            return self.players[room_id][player_name].current_position
+        return None
+    def apply_tile_effect(self, room_id: str, player_name: str, tile: str) -> Optional[str]:
+        """
+        This function is simplified. You'll need to implement full detail per tile type.
+        """
+        if "Shock" in tile:
+            return self.apply_shock_event(room_id, player_name)
+        elif "Chance" in tile:
+            return self.apply_chance_event(room_id, player_name)
+        elif "Jail" in tile:
+            self.put_in_jail(room_id, player_name)
+            return f"{player_name} vào tù"
+        return None
