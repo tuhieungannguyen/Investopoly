@@ -127,30 +127,81 @@ async def roll_dice(request: RollDiceRequest):
     room_id = request.room_id
     player_name = request.player_name
 
-    # Kiểm tra lượt hợp lệ
+    # Check if the room exists
+    if room_id not in state.managers:
+        return JSONResponse(status_code=404, content={"error": "Room not found"})
+
+    # Check if it's the player's turn
     if state.managers[room_id].current_player != player_name:
         return JSONResponse(status_code=403, content={"error": "Not your turn"})
 
-    result = state.process_turn(room_id)
+    # Check if the player has already rolled this round
+    if state.players[room_id][player_name].round_played >= state.managers[room_id].current_round:
+        return JSONResponse(status_code=403, content={"error": "You have already rolled this round"})
 
-    # Broadcast roll result
+    # Roll the dice
+    dice_roll = state.roll_dice()
+
+    # Update player position
+    tile = state.move_player(room_id, player_name, dice_roll)
+
+    # Broadcast updated leaderboard
+    await manager.broadcast(room_id, {
+        "type": "leaderboard_update",
+        "leaderboard": state.managers[room_id].leader_board
+    })
+
+    # Process tile effects
+    owner = state.get_tile_owner(room_id, tile)
+    transaction = None
+    if owner and owner != player_name:
+        rent = state.get_tile_value(room_id, tile) * 0.2
+        state.players[room_id][player_name].cash -= rent
+        state.players[room_id][owner].cash += rent
+        transaction = Transaction(
+            amount=rent,
+            description=f"Player {player_name} paid {rent} to {owner} for {tile}"
+        )
+        state.transactions[room_id].append(transaction)
+
+    # Check if the player can buy the estate or stock
+    can_buy_estate = not owner and state.get_tile_value(tile["name"]) > 0
+    can_buy_stock = tile["name"] in state.stocks[room_id] and state.stocks[room_id][tile["name"]].available > 0
+
+    # Mark the player as having played this round
+    state.players[room_id][player_name].round_played = state.managers[room_id].current_round
+
+    # Broadcast roll result and updated position
     await manager.broadcast(room_id, {
         "type": "player_rolled",
-        "result": result,
-        "message": f"{player_name} rolled the dice!"
+        "player": player_name,
+        "dice": dice_roll,
+        "tile": tile,
+        "message": f"Player {player_name} rolled a {dice_roll}",
+        "can_buy_estate": can_buy_estate,
+        "can_buy_stock": can_buy_stock
     })
 
-    state.end_turn(room_id)
-
-    # Broadcast next turn information
+    # Broadcast updated positions
     await manager.broadcast(room_id, {
-        "type": "next_turn",
-        "round": state.managers[room_id].current_round,
-        "current_player": state.managers[room_id].current_player,
-        "message": f"Round {state.managers[room_id].current_round}, Current Player: {state.managers[room_id].current_player}"
+        "type": "update_positions",
+        "players": [
+            {
+                "player_name": p.player_name,
+                "current_position": p.current_position
+            } for p in state.players[room_id].values()
+        ]
     })
 
-    return {"message": "Turn processed", "result": result}
+    # Return tile information to the player
+    return {
+        "message": "Roll processed",
+        "dice": dice_roll,
+        "tile": tile,
+        "transaction": transaction.model_dump() if transaction else None,
+        "can_buy_estate": can_buy_estate,
+        "can_buy_stock": can_buy_stock
+    }
 
 @app.post("/end")
 async def end_game(request: EndGameRequest):
@@ -183,3 +234,50 @@ async def create_room(body: CreateRoomRequest):
 
     state.init_room(room_id, [host_name])
     return {"message": f"Room {room_id} created by {host_name}"}
+
+@app.post("/end_turn")
+async def end_turn(request: Request):
+    body = await request.json()
+    room_id = body["room_id"]
+    player_name = body["player_name"]
+
+    # Check if it's the player's turn
+    if state.managers[room_id].current_player != player_name:
+        return JSONResponse(status_code=403, content={"error": "Not your turn"})
+
+    # Move to the next player's turn
+    state.next_turn(room_id)
+
+    # Broadcast the next turn
+    await manager.broadcast(room_id, {
+        "type": "next_turn",
+        "round": state.managers[room_id].current_round,
+        "current_player": state.managers[room_id].current_player,
+        "message": f"It's {state.managers[room_id].current_player}'s turn"
+    })
+
+    return {"message": "Turn ended"}
+
+@app.post("/buy_estate")
+async def buy_estate(request: Request):
+    body = await request.json()
+    room_id = body["room_id"]
+    player_name = body["player_name"]
+    estate_name = body["estate_name"]
+    price = body["price"]
+
+    # Process the purchase
+    result = state.buy_estate(room_id, player_name, estate_name, price)
+
+    if result["success"]:
+        # Broadcast the purchase to other players
+        await manager.broadcast(room_id, {
+            "type": "estate_purchased",
+            "player": player_name,
+            "estate": estate_name,
+            "price": price,
+            "message": result["message"],
+            "leaderboard": state.managers[room_id].leader_board
+        })
+
+    return result
