@@ -1,4 +1,8 @@
-# === TOTAL ROUND ===
+SERVER = "http://localhost:8000"
+WS_URL_BASE = "ws://localhost:8000/ws"
+
+
+# === TOTAL ROUND ===đđ
 TOTAL_ROUND = 15
 
 # === STARTING MONEY ===

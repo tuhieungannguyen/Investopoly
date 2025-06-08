@@ -9,8 +9,10 @@ import investopoly_main_ui
 import os  # <-- Import os module
 
 # --- Config ---
-SERVER = "http://localhost:8000"
-WS_URL_BASE = "ws://localhost:8000/ws"
+SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+SERVER_PORT = os.getenv('SERVER_PORT', '8000')
+SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
+WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
 
 # --- Colors ---
 WHITE = (255, 255, 255)

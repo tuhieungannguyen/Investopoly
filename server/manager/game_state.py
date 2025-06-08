@@ -39,14 +39,44 @@ class GameState:
     def roll_dice(self) -> int:
         return randint(1, 6)
 
-    def move_player(self, room_id: str, player_name: str, steps: int) -> str:
+    def move_player(self, room_id: str, player_name: str, steps: int) -> dict:
         player = self.players[room_id][player_name]
         old_position = player.current_position
         new_position = (old_position + steps) % len(TILE_MAP)
+
+        # Check if the player passed the GO tile
         if new_position < old_position:
-            player.cash += GO_REWARD
+            player.cash += GO_REWARD  # Add $200 to the player's cash
+            player.net_worth = player.cash + sum(
+                estate.value for estate in self.estates[room_id] if estate.owner == player_name
+            )  # Recalculate net worth
+
+            # Update the leaderboard
+            self.update_leaderboard(room_id)
+
         player.current_position = new_position
-        return TILE_MAP[new_position]
+
+        tile = TILE_MAP[new_position]
+        return {
+            "name": tile,
+            "owner": self.get_tile_owner(room_id, tile),
+            "value": self.get_tile_value(tile)
+        }
+
+    def get_tile_owner(self, room_id: str, tile: str) -> Optional[str]:
+        for estate in self.estates[room_id]:
+            if estate.name == tile:
+                return estate.owner
+        return None
+
+    def get_tile_value(self, tile: str) -> float:
+        # Example logic to get tile value
+        tile_values = {
+            "Park Place": 400,
+            "Boardwalk": 500,
+            # Add other tiles here
+        }
+        return tile_values.get(tile, 0)
 
     def apply_tile_effect(self, room_id: str, player_name: str, tile: str) -> Optional[str]:
         """
@@ -91,9 +121,39 @@ class GameState:
     def buy_estate(self, room_id: str, player_name: str, estate_name: str, price: float):
         player = self.players[room_id][player_name]
         if player.cash >= price:
+            # Deduct money from the player
             player.cash -= price
-            player.estates.append(estate_name)
-            self.transactions[room_id].append(Transaction(from_=player_name, to="bank", amount=price, round=self.managers[room_id].current_round))
+
+            # Add the estate to the player's properties with all required fields
+            new_estate = Estate(
+                name=estate_name,
+                owner=player_name,
+                value=price,
+                position=player.current_position,  # Assuming position is the player's current position
+                price=price,
+                rent_price=price * 0.1  # Example rent price calculation
+            )
+            self.estates[room_id].append(new_estate)
+
+            # Update the player's net worth
+            player.net_worth += price
+
+            # Update the leaderboard
+            self.update_leaderboard(room_id)
+
+            return {"success": True, "message": f"{player_name} successfully bought {estate_name}."}
+        else:
+            return {"success": False, "message": "Insufficient funds to buy the estate."}
+
+    def update_leaderboard(self, room_id: str):
+        self.managers[room_id].leader_board = sorted(
+            [
+                {"player": p.player_name, "net_worth": p.net_worth}
+                for p in self.players[room_id].values()
+            ],
+            key=lambda x: x["net_worth"],
+            reverse=True
+        )
 
     def upgrade_estate(self, room_id: str, player_name: str, estate_name: str, upgrade_cost: float):
         player = self.players[room_id][player_name]
@@ -183,7 +243,7 @@ class GameState:
         dice = self.roll_dice()
         tile = self.move_player(room_id, current_player, dice)
         result = self.apply_tile_effect(room_id, current_player, tile)
-        self.players[room_id][current_player].round_played += 1
+        # self.players[room_id][current_player].round_played += 1
         return {
             "player": current_player,
             "dice": dice,
