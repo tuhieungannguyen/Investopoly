@@ -27,13 +27,23 @@ BLUE = (100, 149, 237)
 LIGHT_GRAY = (230, 230, 230)
 GREEN = (34, 139, 34)
 
+
+
+# --- Config ---
+SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+SERVER_PORT = os.getenv('SERVER_PORT', '8000')
+SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
+WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
+
+
 # Vị trí layout
 top_bar = pygame.Rect(20, 20, 1160, 50)
 map_area = pygame.Rect(20, 80, 850, 600)
-event_box = pygame.Rect(850, 80, 325, 250)
-leaderboard_box = pygame.Rect(850, 350, 325, 250)
-portfolio_box = pygame.Rect(850, 620, 320, 260)
-action_bar = pygame.Rect(20, 900, 1160, 70)
+event_box = pygame.Rect(630, 80, 300, 250)
+leaderboard_box = pygame.Rect(630, 350, 550, 330)
+portfolio_box = pygame.Rect(950, 80, 230, 250)
+action_bar = pygame.Rect(20, 700, 1160, 70)
 
 # ws variable
 ws_joined_players = []
@@ -62,7 +72,7 @@ def determine_host(player_name, joined_players):
 async def listen_ws(room_id, player_name):
     global ws_joined_players, ws_leaderboard, ws_portfolio, ws_notifications, current_player, current_round
     ws_notifications = []  # Initialize notifications list
-    uri = f"ws://localhost:8000/ws/{room_id}/{player_name}"
+    uri = f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}"
     async with websockets.connect(uri) as ws:
         while True:
             try:
@@ -227,7 +237,7 @@ def handle_end_turn():
     # Example: send_end_turn_request()
 
 async def send_buy_request(room_id, player_name, estate_name, price):
-    url = "http://localhost:8000/buy_estate"
+    url = f"http://{SERVER_HOST}:8000/buy_estate"
     payload = {
         "room_id": room_id,
         "player_name": player_name,
@@ -244,11 +254,11 @@ async def send_buy_request(room_id, player_name, estate_name, price):
 
 async def send_sell_request(room_id, player_name):
     # Example logic to send a sell request to the server
-    async with websockets.connect(f"ws://localhost:8000/ws/{room_id}/{player_name}") as ws:
+    async with websockets.connect(f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}") as ws:
         await ws.send(json.dumps({"action": "sell", "player_name": player_name}))
 
 async def send_end_turn_request(room_id, player_name):
-    url = "http://localhost:8000/end_turn"
+    url = f"http://{SERVER_HOST}:8000/end_turn"
     payload = {
         "room_id": room_id,
         "player_name": player_name
@@ -344,7 +354,7 @@ def draw_map_with_players(surface, players):
     # Load the board image as the map
     board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board_new.png'))
     board_image = pygame.image.load(board_image_path)
-    board_image = pygame.transform.scale(board_image, (800, 800))
+    board_image = pygame.transform.scale(board_image, (600, 600))
     surface.blit(board_image, (map_area.x, map_area.y))
 
     # Load avatars using absolute path
@@ -354,30 +364,30 @@ def draw_map_with_players(surface, players):
     ]
 
     # Define tile dimensions based on the scaled board
-    corner_tile_size = (172, 172)  # Corner tiles
-    vertical_tile_size = (172, 115)  # Vertical tiles
-    horizontal_tile_size = (115, 172)  # Horizontal tiles
+    corner_tile_size = (129, 129)  # Corner tiles
+    vertical_tile_size = (129, 86)  # Vertical tiles
+    horizontal_tile_size = (86, 129)  # Horizontal tiles
 
     for idx, player in enumerate(players):
         if isinstance(player, dict) and "current_position" in player:
             position = player["current_position"]
 
             if position == 0:  # GO
-                x, y = map_area.x, map_area.y + 800 - corner_tile_size[1]
+                x, y = map_area.x, map_area.y + 600 - corner_tile_size[1]
             elif position < 5:  # Left column (going up)
-                x, y = map_area.x, map_area.y + 800 - (position * vertical_tile_size[1]) - corner_tile_size[1]
+                x, y = map_area.x, map_area.y + 600 - (position * vertical_tile_size[1]) - corner_tile_size[1]
             elif position == 5:  # Jail Visit
                 x, y = map_area.x, map_area.y
             elif position < 10:  # Top row (going right)
                 x, y = map_area.x + ((position - 6) * horizontal_tile_size[0]) + corner_tile_size[0], map_area.y
             elif position == 10:  # Quizzes (Education)
-                x, y = map_area.x + 800 - corner_tile_size[0], map_area.y
+                x, y = map_area.x + 600 - corner_tile_size[0], map_area.y
             elif position < 15:  # Right column (going down)
-                x, y = map_area.x + 800 - vertical_tile_size[0], map_area.y + ((position - 11) * vertical_tile_size[1]) + corner_tile_size[1]
+                x, y = map_area.x + 600 - vertical_tile_size[0], map_area.y + ((position - 11) * vertical_tile_size[1]) + corner_tile_size[1]
             elif position == 15:  # Jail (Challenge)
-                x, y = map_area.x + 800 - corner_tile_size[0], map_area.y + 800 - corner_tile_size[1]
+                x, y = map_area.x + 600 - corner_tile_size[0], map_area.y + 600 - corner_tile_size[1]
             else:  # Bottom row (going left)
-                x, y = map_area.x + 800 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 800 - horizontal_tile_size[1]
+                x, y = map_area.x + 600 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 600 - horizontal_tile_size[1]
 
             
             avatar = pygame.transform.scale(avatars[idx], (corner_tile_size[0] // 3, corner_tile_size[1] // 3))
@@ -391,12 +401,12 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
         pygame.display.init()
 
     # Adjust the window size to match the board dimensions
-    screen = pygame.display.set_mode((1200, 1000))
+    screen = pygame.display.set_mode((1200, 800))
     pygame.display.set_caption("Investopoly - Main Game UI")
 
     threading.Thread(target=lambda: asyncio.run(listen_ws(room_id, player_name)), daemon=True).start()
     running = True
-    start_btn = pygame.Rect(850, 920, 120, 50)  # Adjusted position for the start button
+    start_btn = pygame.Rect(850, 720, 120, 50)  # Adjusted position for the start button
 
     while running:
         screen.fill(WHITE)
@@ -409,7 +419,7 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
                 if is_host_runtime and start_btn and start_btn.collidepoint(e.pos):
                     try:
                         print("Host clicked the START button.")  # Debug log
-                        response = requests.post(f"http://localhost:8000/start", json={"room_id": room_id})
+                        response = requests.post(f"http://{SERVER_HOST}:8000/start", json={"room_id": room_id})
                         if response.status_code == 200:
                             print("Game started successfully.")
                             start_btn = None  # Remove the START button after the game starts
@@ -468,7 +478,7 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
             for e in events:
                 if e.type == pygame.MOUSEBUTTONDOWN and roll_button.collidepoint(e.pos):
                     try:
-                        response = requests.post("http://localhost:8000/roll", json={"room_id": room_id, "player_name": player_name})
+                        response = requests.post(f"http://{SERVER_HOST}:8000/roll", json={"room_id": room_id, "player_name": player_name})
                         if response.status_code != 200:
                             print("Error rolling dice:", response.json())
                     except Exception as err:
