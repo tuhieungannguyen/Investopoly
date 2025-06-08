@@ -30,8 +30,8 @@ GREEN = (34, 139, 34)
 
 
 # --- Config ---
-SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
-# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 SERVER_PORT = os.getenv('SERVER_PORT', '8000')
 SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
 WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
@@ -39,6 +39,7 @@ WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
 
 # Vị trí layout
 top_bar = pygame.Rect(20, 20, 1160, 50)
+# top_bar = pygame.Rect(x, y , chieu ngang, chieu doc)
 map_area = pygame.Rect(20, 80, 850, 600)
 event_box = pygame.Rect(630, 80, 300, 250)
 leaderboard_box = pygame.Rect(630, 350, 550, 330)
@@ -210,31 +211,11 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
                     text = str(item)
                 surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
 
-
-
 def draw_top_bar(surface, room, player, round):
     pygame.draw.rect(surface, BLUE, top_bar)
     pygame.draw.rect(surface, BLACK, top_bar, 2)
     label = font_title.render(f"Room: {room} | Player: {player} | Round: {round}", True, WHITE)
     surface.blit(label, (top_bar.x + 20, top_bar.y + 10))
-
-def handle_buy():
-    print("Buy button clicked")
-    # Logic to handle buying estates or stocks
-    # Send a request to the server to buy the selected item
-    # Example: send_buy_request(item_type, item_name)
-
-def handle_sell():
-    print("Sell button clicked")
-    # Logic to handle selling owned assets
-    # Display a list of owned assets and send a sell request to the server
-    # Example: send_sell_request(asset_type, asset_name)
-
-def handle_end_turn():
-    print("End Turn button clicked")
-    # Logic to handle ending the player's turn
-    # Send a request to the server to end the turn
-    # Example: send_end_turn_request()
 
 async def send_buy_request(room_id, player_name, estate_name, price):
     url = f"http://{SERVER_HOST}:8000/buy_estate"
@@ -320,35 +301,6 @@ def draw_action_buttons(surface, room_id, player_name):
         mouse_click = pygame.mouse.get_pressed()
         if rect.collidepoint(mouse_pos) and mouse_click[0]:
             handle_button_click(label, room_id, player_name)
-
-def draw_map(surface):
-    pygame.draw.rect(surface, WHITE, map_area)
-    pygame.draw.rect(surface, BLACK, map_area, 2)
-
-    tile_width = map_area.width // 5
-    tile_height = map_area.height // 5
-
-    # Vẽ các ô theo hình chữ nhật
-    for i, tile in enumerate(TILE_MAP):
-        if i < 5:  # Cột bên trái (đi lên)
-            x = map_area.x
-            y = map_area.y + map_area.height - (i + 1) * tile_height
-        elif i < 10:  # Hàng trên cùng (đi sang phải)
-            x = map_area.x + (i - 5) * tile_width
-            y = map_area.y
-        elif i < 15:  # Cột bên phải (đi xuống)
-            x = map_area.x + map_area.width - tile_width
-            y = map_area.y + (i - 10) * tile_height
-        else:  # Hàng dưới cùng (đi sang trái)
-            x = map_area.x + map_area.width - (i - 15 + 1) * tile_width
-            y = map_area.y + map_area.height - tile_height
-
-        tile_rect = pygame.Rect(x, y, tile_width, tile_height)
-        pygame.draw.rect(surface, LIGHT_GRAY, tile_rect)
-        pygame.draw.rect(surface, BLACK, tile_rect, 1)
-
-        label = font.render(tile, True, BLACK)
-        surface.blit(label, label.get_rect(center=tile_rect.center))
 
 def draw_map_with_players(surface, players):
     # Load the board image as the map
@@ -455,7 +407,7 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
         draw_map_with_players(screen, ws_joined_players or joined_players)
         draw_box(event_box, "Notification", screen, ws_notifications)  # Display notifications
         draw_box(leaderboard_box, "Leaderboard", screen, ws_leaderboard or leaderboard)
-        draw_box(portfolio_box, "Player Property", screen, ws_portfolio or portfolio, is_dict=True)
+        draw_box(portfolio_box, "Portfolio", screen, ws_portfolio or portfolio, is_dict=True)
         draw_action_buttons(screen, room_id, player_name)
 
         # Nút start chỉ nếu là host
