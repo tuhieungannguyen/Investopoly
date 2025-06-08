@@ -217,13 +217,11 @@ def draw_top_bar(surface, room, player, round):
     label = font_title.render(f"Room: {room} | Player: {player} | Round: {round}", True, WHITE)
     surface.blit(label, (top_bar.x + 20, top_bar.y + 10))
 
-async def send_buy_request(room_id, player_name, estate_name, price):
+async def send_buy_request(room_id, player_name):
     url = f"http://{SERVER_HOST}:8000/buy_estate"
     payload = {
         "room_id": room_id,
         "player_name": player_name,
-        "estate_name": estate_name,
-        "price": price
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as response:
@@ -260,9 +258,7 @@ def handle_button_click(button_label, room_id, player_name):
     if button_label == "Buy":
         # Logic to handle Buy action
         print("Buy button clicked")
-        estate_name = "Example Estate"  # Replace with actual logic to get estate name
-        price = 200  # Replace with actual logic to get price
-        asyncio.run(send_buy_request(room_id, player_name, estate_name, price))
+        asyncio.run(send_buy_request(room_id, player_name))
     elif button_label == "Sell":
         # Logic to handle Sell action
         print("Sell button clicked")

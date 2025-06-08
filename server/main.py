@@ -267,7 +267,7 @@ async def buy_estate(body: BuyEstateRequest):
 
     current_position = state.get_player_position(room_id, player_name)
     # Process the purchase
-    result = state.buy_estate(room_id, player_name, state.current_tile)
+    result = state.buy_estate(room_id, player_name)
 
     if result["success"]:
         # Broadcast the purchase to other players
