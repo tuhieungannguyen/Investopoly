@@ -5,6 +5,7 @@ from typing import Dict, List
 
 from fastapi.responses import JSONResponse
 
+from server.request.buy_estate import BuyEstateRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.join_room import JoinRoomRequest
@@ -259,23 +260,20 @@ async def end_turn(request: Request):
     return {"message": "Turn ended"}
 
 @app.post("/buy_estate")
-async def buy_estate(request: Request):
-    body = await request.json()
-    room_id = body["room_id"]
-    player_name = body["player_name"]
-    estate_name = body["estate_name"]
-    price = body["price"]
+async def buy_estate(body: BuyEstateRequest):
 
+    room_id = body.room_id
+    player_name = body.player_name
+
+    current_position = state.get_player_position(room_id, player_name)
     # Process the purchase
-    result = state.buy_estate(room_id, player_name, estate_name, price)
+    result = state.buy_estate(room_id, player_name, state.current_tile)
 
     if result["success"]:
         # Broadcast the purchase to other players
         await manager.broadcast(room_id, {
             "type": "estate_purchased",
             "player": player_name,
-            "estate": estate_name,
-            "price": price,
             "message": result["message"],
             "leaderboard": state.managers[room_id].leader_board
         })
