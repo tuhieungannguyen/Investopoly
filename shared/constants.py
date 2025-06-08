@@ -24,11 +24,11 @@ STOCKS = [
 ]
 # === ESTATES ===
 ESTATES = [
-    {"name": "Real Estate 1", "position": 18, "price": 100, "rent_price": 10},
-    {"name": "Real Estate 2", "position": 16, "price": 200, "rent_price": 20},
-    {"name": "Real Estate 3", "position": 14, "price": 300, "rent_price": 30},
+    {"name": "Real Estate 1", "position": 1, "price": 100, "rent_price": 10},
+    {"name": "Real Estate 2", "position": 4, "price": 200, "rent_price": 20},
+    {"name": "Real Estate 3", "position": 9, "price": 300, "rent_price": 30},
     {"name": "Real Estate 4", "position": 11, "price": 400, "rent_price": 40},
-    {"name": "Real Estate 5", "position": 1, "price": 500, "rent_price": 50},
+    {"name": "Real Estate 5", "position": 19, "price": 500, "rent_price": 50},
 ]
 # === JAIL STATUS ===
 JAIL_STATUS = {

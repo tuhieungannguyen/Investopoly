@@ -223,7 +223,30 @@ async def end_game(request: EndGameRequest):
 async def get_status(room_id: str):
     if room_id not in state.rooms:
         return JSONResponse(status_code=404, content={"error": "Room not found"})
+    
+    state.print_game_state(room_id)
     return state.get_state(room_id)
+
+@app.get("/debug/print_state/{room_id}")
+async def debug_print_state(room_id: str):
+    if room_id not in state.rooms:
+        return JSONResponse(status_code=404, content={"error": "Room not found"})
+
+    import io
+    import sys
+
+    # Redirect stdout để capture nội dung in
+    old_stdout = sys.stdout
+    buffer = io.StringIO()
+    sys.stdout = buffer
+
+    try:
+        state.print_game_state(room_id)
+    finally:
+        sys.stdout = old_stdout
+
+    output = buffer.getvalue()
+    return {"room_id": room_id, "state": output}
 
 @app.post("/create")
 async def create_room(body: CreateRoomRequest):

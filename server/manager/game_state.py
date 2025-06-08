@@ -31,14 +31,12 @@ class GameState:
             leader_board=[]
         )
         self.estates[room_id] = [
-        Estate(
-        name=e["name"],
-        owner=None,
-        value=e["price"],
-        position=e["position"],
-        price=e["price"],
-        rent_price=e["rent_price"]
-        )
+            Estate(
+                name=e["name"],
+                position=e["position"],
+                price=e["price"],
+                rent_price=e["rent_price"]
+            )
             for e in ESTATES
         ]
         self.stocks[room_id] = {}
@@ -64,7 +62,7 @@ class GameState:
         if new_position < old_position:
             player.cash += GO_REWARD  # Add $200 to the player's cash
             player.net_worth = player.cash + sum(
-                estate.value for estate in self.estates[room_id] if estate.owner == player_name
+                estate.price for estate in self.estates[room_id] if estate.owner_name  == player_name
             )  # Recalculate net worth
 
             # Update the leaderboard
@@ -129,22 +127,26 @@ class GameState:
     # 
     def buy_estate(self, room_id: str, player_name: str):
         player = self.players[room_id][player_name]
+        print(f"{player.current_position} position")
+        
         position = player.current_position
         tile_name = TILE_MAP[position]
+        print(f"{tile_name} tile_name")
+
 
         # Tìm estate đúng ô người chơi đang đứng
         estate = next((e for e in self.estates[room_id] if e.name == tile_name), None)
 
         if not estate:
             return {"success": False, "message": f"{tile_name} không phải bất động sản."}
-        if estate.owner is not None:
+        if estate.owner_name is not None:
             return {"success": False, "message": f"{tile_name} đã có chủ sở hữu."}
         if player.cash < estate.price:
             return {"success": False, "message": "Không đủ tiền để mua bất động sản."}
 
         # Cập nhật sở hữu và tài sản
         player.cash -= estate.price
-        estate.owner = player_name
+        estate.owner_name  = player_name
         player.net_worth += estate.price
 
         self.update_leaderboard(room_id)
@@ -329,3 +331,48 @@ class GameState:
             self.put_in_jail(room_id, player_name)
             return f"{player_name} vào tù"
         return None
+    
+    def print_game_state(self, room_id: str):
+        if room_id not in self.rooms:
+            print(f"❌ Room {room_id} không tồn tại.")
+            return
+
+        print(f"\n🧾 --- TRẠNG THÁI PHÒNG '{room_id}' ---")
+        room = self.rooms[room_id]
+        print(f"- Trạng thái phòng: {room.status}")
+        print(f"- Thành viên: {', '.join(room.roomMember)}")
+
+        manager = self.managers[room_id]
+        print(f"- Vòng hiện tại: {manager.current_round}")
+        print(f"- Người đang chơi: {manager.current_player}")
+        print(f"- Số người đã chơi vòng này: {manager.current_played}")
+
+        print("\n👤 --- DANH SÁCH NGƯỜI CHƠI ---")
+        for player in self.players[room_id].values():
+            print(f"• {player.player_name}:")
+            print(f"   - Vị trí: {TILE_MAP[player.current_position]} ({player.current_position})")
+            print(f"   - Cash: ${player.cash}")
+            print(f"   - Saving: ${player.saving}")
+            print(f"   - Net Worth: ${player.net_worth}")
+            print(f"   - Đã chơi vòng: {player.round_played}")
+            print(f"   - Cổ phiếu: {player.stocks if player.stocks else 'Không có'}")
+            print(f"   - BĐS sở hữu: {player.estates if player.estates else 'Không có'}")
+
+        print("\n🏠 --- DANH SÁCH BẤT ĐỘNG SẢN ---")
+        for est in self.estates[room_id]:
+            print(f"• {est.name} (vị trí {est.position}): giá ${est.price}, thuê ${est.rent_price}, chủ: {est.owner_name or 'chưa có'}")
+
+        print("\n📈 --- CỔ PHIẾU ---")
+        if self.stocks[room_id]:
+            for stock in self.stocks[room_id].values():
+                print(f"• {stock.name}: ${stock.now_price}, sở hữu bởi {', '.join(stock.owner_list)}")
+        else:
+            print("Chưa có cổ phiếu nào được giao dịch.")
+
+        print("\n📊 --- BẢNG XẾP HẠNG ---")
+        for i, entry in enumerate(manager.leader_board, 1):
+            print(f"{i}. {entry['player']} - Net Worth: ${entry['net_worth']}")
+
+        print("\n📄 --- GHI NHỚ GIAO DỊCH ---")
+        for txn in self.transactions[room_id]:
+            print(f"• Round {txn.round}: {txn.from_player} → {txn.to_player} ${txn.amount}")
