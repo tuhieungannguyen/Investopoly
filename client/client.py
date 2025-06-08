@@ -9,7 +9,8 @@ import investopoly_main_ui
 import os  # <-- Import os module
 
 # --- Config ---
-SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 SERVER_PORT = os.getenv('SERVER_PORT', '8000')
 SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
 WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
@@ -162,13 +163,17 @@ def main():
                             r = requests.post(f"{SERVER}/create", json={"room_id": room_id, "host_name": player_name})
                             if r.status_code == 200:
                                 status = f"Room {room_id} create"
+                                print(f"✅ Room {room_id} created successfully.")
                             elif "exists" in r.text or r.status_code == 400:
                                 status = f"Room {room_id} existed. Joining..."
+                                print(f"⚠️ Room {room_id} already exists. Joining...")
                             else:
                                 status = "❗ Lỗi tạo phòng"
+                                print(f"❗ Error creating room {room_id}: {r.text}")
                             start_ws_thread()
                         except Exception as e:
                             status = f"❗ Lỗi kết nối: {e}"
+                            print(f"❗ Connection error: {e}")
 
             elif event.type == pygame.KEYDOWN:
                 if active_input == "room":
