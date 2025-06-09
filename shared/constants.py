@@ -43,6 +43,8 @@ SAVING_INTEREST_RATE = 0.04  # 4% interest rate for savings
 # === SAVING DURATION ===
 SAVING_DURATION = 3  # Savings last for 3 rounds
 
+
+RENTING_ESTATE_FEE = 0.1
 # === SERVICE FEE ===
 SERVICE_FEE = 0.02  # 2% service fee for stock transactions
 
@@ -210,15 +212,18 @@ SHOCK_EVENTS = [
 
 # === CHANCE EVENTS ===
 CHANCE_EVENTS = [
-    {"name": "Trúng số +600$", "type": "plus", "amount": 600},
-    {"name": "Thừa kế +500$", "type": "plus", "amount": 500},
-    {"name": "Nộp thuế -200$", "type": "minus", "amount": 200},
-    {"name": "Bị cướp -100$", "type": "minus", "amount": 100},
-    {"name": "Bị kiện phỉ báng -100$", "type": "minus", "amount": 100},
-    {"name": "Bị gắn cờ trốn thuế -300$", "type": "minus", "amount": 300},
-    {"name": "Trả viện phí -200$", "type": "minus", "amount": 200},
-    {"name": "Khoá học lừa đảo -150$", "type": "minus", "amount": 150},
-    {"name": "Cổ phiếu tất tay -150$", "type": "minus", "amount": 150},
-    {"name": "Được miễn thuế vòng này", "type": "bonus", "amount": 0},
-    {"name": "Miễn nhà tù", "type": "bonus", "amount": 0},
+    {"name": "Skip 1 tax payment", "type": "bonus", "amount": 0},
+    {"name": "Skip Jail", "type": "bonus", "amount": 0},
+    {"name": "Win lottery +$600", "type": "plus", "amount": 600},
+    {"name": "Inheritance +$500", "type": "plus", "amount": 500},
+    
+    {"name": "Pay another tax -$200", "type": "minus", "amount": 200},
+    {"name": "Getting robbed at gunpoint -$100", "type": "minus", "amount": 100},
+    {"name": "No dividend for 1 round", "type": "minus", "amount": 0},
+    {"name": "Flagged for tax evasion and fined -$300", "type": "minus", "amount": 300},
+    {"name": "Pay margin call -$100", "type": "minus", "amount": 100},
+    {"name": "Sued for defamation -$100", "type": "minus", "amount": 100},
+    {"name": "Emergency surgery medical fee -$200", "type": "minus", "amount": 200},
+    {"name": "Scammed by 'get rich fast' course -$150", "type": "minus", "amount": 150},
+    {"name": "All-in on Facebook stock tip -$150", "type": "minus", "amount": 150},
 ]

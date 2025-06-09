@@ -46,10 +46,14 @@ leaderboard_box = pygame.Rect(630, 350, 550, 330)
 portfolio_box = pygame.Rect(950, 80, 230, 250)
 action_bar = pygame.Rect(20, 700, 1160, 70)
 
+
+
 # ws variable
 ws_joined_players = []
 ws_leaderboard = []
 ws_portfolio = {}
+
+
 
 # Define global variable for current round
 current_round = None
@@ -58,6 +62,12 @@ current_player = None
 # Define global variable for scroll offset
 scroll_offset = 0
 
+
+
+
+# ====================================
+# ADD NOTIFICATION                  ||
+# ====================================
 def add_notification(notification):
     global ws_notifications
     # Ensure the latest notification is always added and displayed
@@ -65,11 +75,19 @@ def add_notification(notification):
         ws_notifications.pop(0)  # Remove the oldest notification
     ws_notifications.append(notification)  # Add the new notification
 
+
+# ===================================
+#  DETERMINE HOST                  ||
+# ===================================
 def determine_host(player_name, joined_players):
     if joined_players and isinstance(joined_players[0], dict):
         return player_name == joined_players[0].get('player_name')
     return player_name == joined_players[0] if joined_players else False
 
+
+# ===================================
+#  LISTEN WS                        ||  
+# ===================================
 async def listen_ws(room_id, player_name):
     global ws_joined_players, ws_leaderboard, ws_portfolio, ws_notifications, current_player, current_round
     ws_notifications = []  # Initialize notifications list
@@ -109,7 +127,7 @@ async def listen_ws(room_id, player_name):
 
                 elif message["type"] == "player_joined":
                     raw_notification = f"{message['player']} joined the room."
-                    notification = "\n".join(textwrap.wrap(raw_notification, width=50))
+                    notification = "\n".join(textwrap.wrap(raw_notification, width=30))
                     add_notification(notification)
                     ws_joined_players = message["players"]
                     # Validate leaderboard data before updating
@@ -129,13 +147,18 @@ async def listen_ws(room_id, player_name):
                 elif message["type"] == "error":
                     # Handle error messages from the server
                     raw_notification = f"Error: {message['message']}"
-                    notification = "\n".join(textwrap.wrap(raw_notification, width=50))
+                    notification = "\n".join(textwrap.wrap(raw_notification, width=30))
                     add_notification(notification)
 
                 elif message["type"] == "leaderboard_update":
                     # Update the leaderboard data
                     ws_leaderboard = message["leaderboard"]
                     print("Leaderboard updated:", ws_leaderboard)  # Debug log
+                    
+                elif message["type"] == "chance_event":
+                    event_name = message.get("event", {}).get("name", "Unknown")
+                    raw_notification = f"{message['player']} triggered Chance Event: {event_name}"
+                    add_notification(raw_notification)
 
                 # Update host determination logic
                 is_host_runtime = determine_host(player_name, ws_joined_players)
@@ -148,6 +171,7 @@ async def listen_ws(room_id, player_name):
             except Exception as e:
                 print(f"Unexpected WebSocket error: {e}")
 
+
 # Helper function to enable purchase buttons
 def enable_purchase_button(item_type):
     if item_type == "estate":
@@ -155,6 +179,10 @@ def enable_purchase_button(item_type):
     elif item_type == "stock":
         print("Enable stock purchase button")  # Replace with actual UI logic
 
+
+# ===================================
+#  DRAW BOX                        ||
+# ===================================
 def draw_box(rect, title, surface, items=None, is_dict=False):
     global scroll_offset
     pygame.draw.rect(surface, LIGHT_GRAY, rect)
@@ -170,11 +198,14 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
     end_index = len(items)
 
     if title == "Notification":
+        y_offset = rect.y + 40
+        max_width = rect.width - 20 
         for i, item in enumerate(items[start_index:end_index]):
             # Split the item into multiple lines if it contains '\n'
-            lines = item.split("\n")
-            for j, line in enumerate(lines):
-                surface.blit(font.render(line, True, BLACK), (rect.x + 10, rect.y + 40 + (i * 25) + (j * 20)))
+            wrapped_lines = textwrap.wrap(item, width=38)  # Wrap here instead of earlier
+            for line in wrapped_lines:
+                surface.blit(font.render(line, True, BLACK), (rect.x + 10, y_offset))
+                y_offset += 20
     elif title == "Leaderboard":
         for i, item in enumerate(items[start_index:end_index]):
             if isinstance(item, dict):
@@ -211,12 +242,20 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
                     text = str(item)
                 surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
 
+
+# ===================================
+#  DRAW TOP BAR                  ||
+# ===================================
 def draw_top_bar(surface, room, player, round):
     pygame.draw.rect(surface, BLUE, top_bar)
     pygame.draw.rect(surface, BLACK, top_bar, 2)
     label = font_title.render(f"Room: {room} | Player: {player} | Round: {round}", True, WHITE)
     surface.blit(label, (top_bar.x + 20, top_bar.y + 10))
 
+
+# ==================================
+# SEND BUY REQUEST                 ||
+# ==================================
 async def send_buy_request(room_id, player_name):
     url = f"http://{SERVER_HOST}:8000/buy_estate"
     payload = {
@@ -231,11 +270,18 @@ async def send_buy_request(room_id, player_name):
             else:
                 print(f"Failed to buy estate: {response.status}")
 
+# =====================================
+# SEND SELL REQUEST                  ||
+# =====================================
 async def send_sell_request(room_id, player_name):
     # Example logic to send a sell request to the server
     async with websockets.connect(f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}") as ws:
         await ws.send(json.dumps({"action": "sell", "player_name": player_name}))
 
+
+# =====================================
+#  END TURN REQUEST                  ||
+# =====================================
 async def send_end_turn_request(room_id, player_name):
     url = f"http://{SERVER_HOST}:8000/end_turn"
     payload = {
@@ -254,6 +300,10 @@ async def send_end_turn_request(room_id, player_name):
             else:
                 print(f"Failed to end turn: {response.status}")
 
+
+# ===================================
+#  HANDLE BUTTON                   ||
+# ===================================
 def handle_button_click(button_label, room_id, player_name):
     if button_label == "Buy":
         # Logic to handle Buy action
@@ -268,6 +318,10 @@ def handle_button_click(button_label, room_id, player_name):
         print("End Turn button clicked")
         asyncio.run(send_end_turn_request(room_id, player_name))
 
+
+# ==================================
+# DRAW ACTION BUTTON
+# ==================================
 def draw_action_buttons(surface, room_id, player_name):
     pygame.draw.rect(surface, GRAY, action_bar)
     pygame.draw.rect(surface, BLACK, action_bar, 2)
@@ -298,6 +352,10 @@ def draw_action_buttons(surface, room_id, player_name):
         if rect.collidepoint(mouse_pos) and mouse_click[0]:
             handle_button_click(label, room_id, player_name)
 
+
+# =========================================
+#  DRAW MAP WITH PLAYERS
+# =========================================
 def draw_map_with_players(surface, players):
     # Load the board image as the map
     board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board_new.png'))
@@ -341,6 +399,10 @@ def draw_map_with_players(surface, players):
             avatar = pygame.transform.scale(avatars[idx], (corner_tile_size[0] // 3, corner_tile_size[1] // 3))
             surface.blit(avatar, (x + corner_tile_size[0] // 4, y + corner_tile_size[1] // 4))
 
+
+# =========================================
+#  RUN UI
+# =========================================
 def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=None):
     global current_player
     if not pygame.get_init():
