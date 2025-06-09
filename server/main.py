@@ -30,7 +30,7 @@ app.add_middleware(
 # === Quản lý kết nối WebSocket ===
 manager = ConnectionManager()
 # === Quản lý trạng thái game theo từng phòng ===
-state = GameState()
+state = GameState(manager)
 
 @app.websocket("/ws/{room_id}/{player_name}")
 async def game_room(websocket: WebSocket, room_id: str, player_name: str):
@@ -288,7 +288,6 @@ async def buy_estate(body: BuyEstateRequest):
     room_id = body.room_id
     player_name = body.player_name
 
-    current_position = state.get_player_position(room_id, player_name)
     # Process the purchase
     result = state.buy_estate(room_id, player_name)
 
