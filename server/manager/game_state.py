@@ -121,6 +121,17 @@ class GameState:
         # rent estate
         await self.handle_estate_rent(room_id, player_name)        
         await self.charge_stock_service_fee(room_id, player_name)
+        
+        await self.handle_saving_tile(room_id, player_name)
+        saving_result = self.check_saving_maturity(room_id, player_name)
+        if saving_result["total_received"] > 0:
+            await self.manager.broadcast(room_id, {
+                "type": "saving_matured",
+                "message": saving_result["message"],
+                "player": player_name,
+                "amount": saving_result["total_received"],
+                "interest": saving_result["interest_earned"]
+            })
         shock_result = self.trigger_shock_if_applicable(room_id, player_name)
         if shock_result:
             print(f"⚠️ Shock triggered: {shock_result['description']}")
@@ -729,22 +740,128 @@ class GameState:
     #           SAVING
     # ########################################
 
-    def save_money(self, room_id: str, player_name: str, amount: float):
+    async def handle_saving_tile(self, room_id: str, player_name: str):
         player = self.players[room_id][player_name]
-        if player.cash >= amount:
-            player.cash -= amount
-            player.saving += amount
-            self.saving_records[room_id].append(
-                SavingRecord(
-                    name=f"saving-{player_name}",
-                    owner=player_name,
-                    amount=amount,
-                    start_round=self.managers[room_id].current_round,
-                    end_round=self.managers[room_id].current_round + 3,
-                    isSuccess=True
-                )
-            )
+        current_round = self.managers[room_id].current_round
 
+        # Kiểm tra nếu người chơi đang ở ô 8
+        if player.current_position != 8:
+            return
+
+        # Gửi yêu cầu popup nhập số tiền tiết kiệm
+        await self.manager.send_to_player(room_id, player_name, {
+            "type": "saving_prompt",
+            "message": "You landed on the Saving tile. How much do you want to save?",
+            "max_amount": player.cash
+        })
+        
+        
+    def process_saving_deposit(self, room_id: str, player_name: str, amount: float) -> dict:
+        player = self.players[room_id][player_name]
+        current_round = self.managers[room_id].current_round
+
+        if amount <= 0:
+            return {"success": False, "message": "Amount must be positive."}
+        if amount > player.cash:
+            return {"success": False, "message": "Not enough cash to save."}
+
+        # Trừ tiền và ghi lại saving record
+        player.cash -= amount
+        player.saving += amount
+
+        self.saving_records[room_id].append(
+            SavingRecord(
+                name=f"saving-{player_name}-{current_round}",
+                owner=player_name,
+                amount=amount,
+                start_round=current_round,
+                end_round=current_round + 3,
+                isSuccess=True
+            )
+        )
+
+        # Cập nhật tài sản ròng và leaderboard
+        player.net_worth = self.calculate_net_worth(room_id, player_name)
+        self.update_leaderboard(room_id)
+
+        return {
+            "success": True,
+            "message": f"{player_name} saved ${amount} successfully.",
+            "portfolio": player.dict()
+        }
+    def withdraw_saving(self, room_id: str, player_name: str) -> dict:
+        player = self.players[room_id][player_name]
+        current_round = self.managers[room_id].current_round
+        total_received = 0
+        interest_earned = 0
+
+        matured_records = []
+        for record in self.saving_records[room_id]:
+            if record.owner == player_name and record.isSuccess:
+                matured = current_round >= record.end_round
+                amount = record.amount
+                if matured:
+                    interest = round(amount * 0.04, 2)
+                    total = amount + interest
+                    interest_earned += interest
+                else:
+                    total = amount  # no interest
+                total_received += total
+                record.isSuccess = False
+                matured_records.append(record)
+
+        if total_received > 0:
+            player.saving = 0
+            player.cash += total_received
+            player.net_worth = self.calculate_net_worth(room_id, player_name)
+            self.update_leaderboard(room_id)
+
+            return {
+                "success": True,
+                "message": f"Withdrawn ${total_received} (Interest: ${interest_earned})",
+                "amount": total_received,
+                "interest": interest_earned,
+                "portfolio": player.dict()
+            }
+        return {"success": False, "message": "No savings to withdraw."}
+        
+    def check_saving_maturity(self, room_id: str, player_name: str):
+        player = self.players[room_id][player_name]
+        current_round = self.managers[room_id].current_round
+
+        matured = []
+        remaining = []
+
+        for saving in self.saving_records[room_id]:
+            if saving.owner == player_name:
+                if current_round >= saving.end_round and saving.isSuccess:
+                    matured.append(saving)
+                else:
+                    remaining.append(saving)
+
+        total_interest = 0
+        for s in matured:
+            interest = round(s.amount * 0.04 * 3, 2)  # 4%/round * 3 rounds
+            total = s.amount + interest
+            player.cash += total
+            player.saving -= s.amount
+            total_interest += interest
+
+        # Xóa các khoản tiết kiệm đã đáo hạn
+        self.saving_records[room_id] = remaining + [
+            s for s in self.saving_records[room_id]
+            if s.owner != player_name or not s.isSuccess or current_round < s.end_round
+        ]
+
+        # Cập nhật tài sản ròng và leaderboard
+        player.net_worth = self.calculate_net_worth(room_id, player_name)
+        self.update_leaderboard(room_id)
+
+        return {
+            "total_received": sum(s.amount for s in matured),
+            "interest_earned": total_interest,
+            "message": f"{player_name} received ${sum(s.amount for s in matured)} + ${total_interest} interest from savings."
+        }
 
     # ########################################
     #           TAX PENALTY

@@ -92,8 +92,56 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
             elif action == "notify":
                 target = data.get("target")
                 await manager.send_to_player(room_id, target, data)
+                
+            elif action == "saving_deposit":
+                room_id = data["room_id"]
+                player_name = data["player_name"]
+                amount = data["amount"]
+
+                result = state.process_saving_deposit(room_id, player_name, amount)
+
+                # Gửi cập nhật đến player
+                await manager.send_to_player(room_id, player_name, {
+                    "type": "saving_result",
+                    "success": result["success"],
+                    "message": result["message"],
+                    "portfolio": result.get("portfolio", {})
+                })
+
+                # Gửi leaderboard update nếu thành công
+                if result["success"]:
+                    await manager.broadcast(room_id, {
+                        "type": "leaderboard_update",
+                        "leaderboard": state.managers[room_id].leader_board
+                    })
+            elif action == "saving_deposit":
+                room_id = data["room_id"]
+                player_name = data["player_name"]
+                amount = float(data["amount"])
+                result = state.process_saving_deposit(room_id, player_name, amount)
+                await connection.send_json({
+                    "type": "saving_deposit_result",
+                    "success": result["success"],
+                    "message": result["message"],
+                    "portfolio": result.get("portfolio", {})
+                })
+
+            elif action == "saving_withdraw":
+                room_id = data["room_id"]
+                player_name = data["player_name"]
+                result = state.withdraw_saving(room_id, player_name)
+                await connection.send_json({
+                    "type": "saving_withdraw_result",
+                    "success": result["success"],
+                    "message": result["message"],
+                    "amount": result.get("amount", 0),
+                    "interest": result.get("interest", 0),
+                    "portfolio": result.get("portfolio", {})
+                })
+
             else:
                 await manager.broadcast(room_id, {"from": player_name, "data": data})
+           
     except WebSocketDisconnect:
         manager.disconnect(room_id, player_name)
 
@@ -322,3 +370,45 @@ async def buy_stock_api(request: BuyStockRequest):
         raise HTTPException(status_code=400, detail=result["message"])
 
     return {"message": result["message"]}
+
+
+@app.post("/saving")
+async def deposit_saving(
+    room_id: str = Body(...),
+    player_name: str = Body(...),
+    amount: float = Body(...)
+):
+    # Kiểm tra phòng và người chơi
+    if room_id not in state.players or player_name not in state.players[room_id]:
+        raise HTTPException(status_code=404, detail="Room or player not found.")
+
+    # Xử lý gửi tiết kiệm
+    result = state.process_saving_deposit(room_id, player_name, amount)
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    # Gửi cập nhật portfolio cho người chơi
+    await manager.send_to_player(room_id, player_name, {
+        "type": "portfolio_update",
+        "portfolio": result["portfolio"]
+    })
+
+    # Cập nhật bảng xếp hạng cho cả phòng
+    await manager.broadcast(room_id, {
+        "type": "leaderboard_update",
+        "leaderboard": state.managers[room_id].leader_board
+    })
+
+    return {"message": result["message"]}
+
+
+@app.post("/api/saving/deposit")
+async def deposit_saving(room_id: str, player_name: str, amount: float):
+    result = state.process_saving_deposit(room_id, player_name, amount)
+    if result["success"]:
+        await state.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": result["portfolio"]
+        })
+    return result
