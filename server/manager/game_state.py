@@ -79,8 +79,22 @@ class GameState:
 
             # Update the leaderboard
             self.update_leaderboard(room_id)
+            asyncio.create_task(self.manager.broadcast(room_id, {
+                    "type": "passed_go",
+                    "message": f"{player_name} passed GO and received ${GO_REWARD}",
+                    "player": player_name,
+                    "amount": GO_REWARD
+                }))
 
         player.current_position = new_position  
+        
+        
+
+        # Gửi lại portfolio cập nhật cho chính người chơi
+        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+        }))
         
         event = self.trigger_chance_if_applicable(room_id, player_name)
         
@@ -334,7 +348,7 @@ class GameState:
 
         # Tìm estate đúng ô người chơi đang đứng
         estate = next((e for e in self.estates[room_id] if e.name == tile_name), None)
-
+        print(f"{estate} - estate")
         if not estate:
             return {"success": False, "message": f"{tile_name} không phải bất động sản."}
         if estate.owner_name is not None:
@@ -345,11 +359,28 @@ class GameState:
         # Cập nhật sở hữu và tài sản
         player.cash -= estate.price
         estate.owner_name  = player_name
-        player.net_worth += estate.price
+        player.estates.append(estate.name)
 
+        
+        # broadcast to all players
         self.update_leaderboard(room_id)
+        message = f"{player_name} has purchased {tile_name} for ${estate.price}."
+        asyncio.create_task(self.manager.broadcast(room_id, {
+            "type": "estate_purchased",
+            "player": player_name,
+            "message": message,
+            "tile": tile_name,
+            "price": estate.price,
+            "leaderboard": self.managers[room_id].leader_board
+        }))
+        
+        # send to player
+        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+        "type": "portfolio_update",
+        "portfolio": player.dict()
+        }))
 
-        return {"success": True, "message": f"{player_name} đã mua {tile_name} với giá {estate.price}$."}
+        return {"success": True, "message": f"Transaction Successful"}
    
     def upgrade_estate(self, room_id: str, player_name: str, estate_name: str, upgrade_cost: float):
         player = self.players[room_id][player_name]

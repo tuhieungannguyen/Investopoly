@@ -16,6 +16,7 @@ class Player(BaseModel):
     saving: float
     net_worth: float
     round_played: int
+    pending_bonus: Optional[List[str]] = [] 
 
 class GameManager(BaseModel):
     current_round: int
