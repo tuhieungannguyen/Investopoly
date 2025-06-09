@@ -40,7 +40,10 @@ class Stock(BaseModel):
     start_price: float
     now_price: float
     service_fee: float
-
+    position: int 
+    available_units: int
+    max_per_player: int
+    
 class JailStatus(BaseModel):
     player_name: str
     start_jail: int

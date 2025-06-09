@@ -187,6 +187,12 @@ async def listen_ws(room_id, player_name):
                     if message.get("player") == player_name:
                         print(f"You purchased {message.get('tile')} for ${message.get('price')}")
                         
+                elif message["type"] == "stock_purchased":
+                    # Thông báo chung cho toàn phòng
+                    notification = "\n".join(textwrap.wrap(message["message"], width=38))
+                    add_notification(notification)
+
+                        
                 elif message["type"] == "portfolio_update":
                     if message.get("portfolio"):
                         ws_portfolio = message["portfolio"]
@@ -423,7 +429,88 @@ async def send_quiz_answer(room_id, player_name, question_id, answer_index):
             else:
                 print(f"❌ Failed to submit quiz answer: {response.status}")
 
+# =====================================
+#  SHOW BUY POP UP                   ||
+# =====================================
+def show_buy_popup(room_id, player_name):
+    import tkinter as tk
 
+    def on_buy_estate():
+        root.destroy()
+        asyncio.run(send_buy_request(room_id, player_name))
+
+    def on_buy_stock():
+        root.destroy()
+        show_stock_purchase_popup(room_id, player_name)
+
+    root = tk.Tk()
+    root.title("Buy Options")
+    window_width, window_height = 300, 150
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = int((screen_width / 2) - (window_width / 2))
+    y = int((screen_height / 2) - (window_height / 2))
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+    tk.Label(root, text="Choose what to buy:").pack(pady=10)
+    tk.Button(root, text="Buy Estate", command=on_buy_estate, width=20).pack(pady=5)
+    tk.Button(root, text="Buy Stock", command=on_buy_stock, width=20).pack(pady=5)
+
+    root.mainloop()
+ 
+# ===================================
+#  SHOW STOCK POPUP                ||
+# ===================================             
+                    
+def show_stock_purchase_popup(room_id, player_name):
+    import tkinter as tk
+    from tkinter import simpledialog
+
+#    Cập nhật lại geometry với vị trí
+    def submit_stock_purchase():
+        quantity = quantity_entry.get()
+        root.destroy()
+        try:
+            asyncio.run(send_stock_purchase(room_id, player_name, int(quantity)))
+        except Exception as e:
+            print(f"❌ Stock buy error: {e}")
+
+    root = tk.Tk()
+    root.title("Buy Stock")
+    window_width, window_height = 300, 150
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = int((screen_width / 2) - (window_width / 2))
+    y = int((screen_height / 2) - (window_height / 2))
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+
+    tk.Label(root, text="Quantity:").pack()
+    quantity_entry = tk.Entry(root)
+    quantity_entry.pack()
+
+    tk.Button(root, text="Buy", command=submit_stock_purchase).pack()
+    root.mainloop()                    
+                  
+# ===================================
+#  CALL BUY STOCK API              ||
+# ===================================                   
+async def send_stock_purchase(room_id, player_name, quantity):
+    url = f"http://{SERVER_HOST}:8000/buy_stock"
+    payload = {
+        "room_id": room_id,
+        "player_name": player_name,
+        "amount": quantity
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload) as response:
+            if response.status == 200:
+                print("✅ Stock purchased")
+            else:
+                print(f"❌ Failed to buy stock: {response.status}")     
+                               
 # ===================================
 #  HANDLE BUTTON                   ||
 # ===================================
@@ -431,7 +518,8 @@ def handle_button_click(button_label, room_id, player_name):
     if button_label == "Buy":
         # Logic to handle Buy action
         print("Buy button clicked")
-        asyncio.run(send_buy_request(room_id, player_name))
+        # asyncio.run(send_buy_request(room_id, player_name))
+        show_buy_popup(room_id, player_name)
     elif button_label == "Sell":
         # Logic to handle Sell action
         print("Sell button clicked")
