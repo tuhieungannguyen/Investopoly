@@ -42,7 +42,8 @@ SAVING_INTEREST_RATE = 0.04  # 4% interest rate for savings
 
 # === SAVING DURATION ===
 SAVING_DURATION = 3  # Savings last for 3 rounds
-
+# === TAX AMOUNT ===
+TAX_AMOUNT = 100
 
 RENTING_ESTATE_FEE = 0.1
 # === SERVICE FEE ===

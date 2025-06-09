@@ -2,7 +2,7 @@ import asyncio
 from random import randint
 import random
 from typing import Dict, List, Optional
-from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT
+from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT, TAX_AMOUNT
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
 from server.manager.connection import ConnectionManager
 
@@ -80,6 +80,10 @@ class GameState:
 
             # Update the leaderboard
             self.update_leaderboard(room_id)
+            asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+            }))
             asyncio.create_task(self.manager.broadcast(room_id, {
                     "type": "passed_go",
                     "message": f"{player_name} passed GO and received ${GO_REWARD}",
@@ -97,6 +101,9 @@ class GameState:
             "player": player_name,
             "message": f"{player_name} is attempting a quiz!"
         })
+        
+        await self.handle_tile_18_penalty(room_id, player_name)
+             
         # rent estate
         await self.handle_estate_rent(room_id, player_name)        
 
@@ -538,6 +545,45 @@ class GameState:
                 )
             )
 
+
+    # ########################################
+    #           TAX PENALTY
+    # ########################################
+    async def handle_tile_18_penalty(self, room_id: str, player_name: str):
+        player = self.players[room_id][player_name]
+
+        # Nếu người chơi đang ở ô 18
+        if player.current_position == 18:
+            penalty_amount = TAX_AMOUNT
+            player.cash = max(0, player.cash - penalty_amount)
+            player.net_worth = player.cash + sum(
+                estate.price for estate in self.estates[room_id] if estate.owner_name == player_name
+            )
+
+            # Cập nhật leaderboard
+            self.update_leaderboard(room_id)
+
+            # Gửi broadcast thông báo
+            await self.manager.broadcast(room_id, {
+                "type": "tile_penalty",
+                "message": f"{player_name} landed on penalty tile and lost ${penalty_amount}.",
+                "player": player_name,
+                "amount": penalty_amount
+            })
+
+            # Gửi cập nhật portfolio
+            await self.manager.send_to_player(room_id, player_name, {
+                "type": "portfolio_update",
+                "portfolio": player.dict()
+            })
+
+            # Gửi cập nhật leaderboard
+            await self.manager.broadcast(room_id, {
+                "type": "leaderboard_update",
+                "leaderboard": self.managers[room_id].leader_board
+            })
+        
+    
     # ########################################
     #           UNUSE
     # ########################################
