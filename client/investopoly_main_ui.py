@@ -196,6 +196,16 @@ async def listen_ws(room_id, player_name):
                     raw_notification = f"{message['player']} passed GO and received ${message['amount']}"
                     add_notification(raw_notification)
                     
+                elif message["type"] == "quiz_result":
+                    raw_notification = message['message']
+                    add_notification(raw_notification)
+                    
+                    
+                elif message["type"] == "tile_penalty":
+                    raw_notification = message["message"]
+                    print("💸 Transaction received:", raw_notification)
+                    add_notification(raw_notification)
+                    
                 elif message["type"] == "estate_rent_paid":
                     raw_notification = message["message"]
                     add_notification(raw_notification)
@@ -489,7 +499,7 @@ def draw_map_with_players(surface, players):
 
     for idx, player in enumerate(players):
         if isinstance(player, dict) and "current_position" in player:
-            position = player["current_position"]
+            position = int(player["current_position"])
 
             if position == 0:  # GO
                 x, y = map_area.x, map_area.y + 600 - corner_tile_size[1]
