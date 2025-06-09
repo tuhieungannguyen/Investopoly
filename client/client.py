@@ -109,20 +109,6 @@ async def connect_and_listen(room_id, player_name):
                         print("✅ Received player data.")
                         should_switch_to_ui = True  # Trigger screen switch
                         ui_launched = True
-
-                elif t == "game_started":
-                    messages.append(f"Game bắt đầu. {data['current_player']} đi trước.")
-                elif t == "player_rolled":
-                    r = data["result"]
-                    messages.append(f"{r['player']} tung {r['dice']} → {r['tile']}")
-                    if r['effect']:
-                        messages.append(f"↳ {r['effect']}")
-                elif t == "next_turn":
-                    messages.append(f"Lượt kế tiếp: {data['current_player']}")
-                elif t == "game_ended":
-                    messages.append("🎯 Game kết thúc!")
-                    for rank, p in enumerate(data["leaderboard"], 1):
-                        messages.append(f"#{rank}: {p['player']} - ${p['net_worth']}")
             except Exception as e:
                 messages.append(f"[Lỗi nhận WS]: {e}")
 

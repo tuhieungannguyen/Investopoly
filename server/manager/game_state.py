@@ -1,7 +1,8 @@
 import asyncio
 from random import randint
+import random
 from typing import Dict, List, Optional
-from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES  
+from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
 from server.manager.connection import ConnectionManager
 
@@ -58,7 +59,7 @@ class GameState:
         return randint(1, 6)   
     
     # Hàm để di chuyển người chơi đến ô mới dựa trên số xúc xắc
-    def move_player(self, room_id: str, player_name: str, steps: int) -> dict:
+    async def move_player(self, room_id: str, player_name: str, steps: int) -> dict:
         
         # Lấy vị trí cũ
         player = self.players[room_id][player_name]
@@ -88,14 +89,17 @@ class GameState:
 
         player.current_position = new_position  
         
-        
+        # Process tile effects
+        if new_position == 10:
+            self.send_quiz_question(room_id, player_name)
+            await self.manager.broadcast(room_id, {
+            "type": "quiz_start",
+            "player": player_name,
+            "message": f"{player_name} is attempting a quiz!"
+        })
+        # rent estate
+        await self.handle_estate_rent(room_id, player_name)        
 
-        # Gửi lại portfolio cập nhật cho chính người chơi
-        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
-            "type": "portfolio_update",
-            "portfolio": player.dict()
-        }))
-        
         event = self.trigger_chance_if_applicable(room_id, player_name)
         
         if event:
@@ -104,21 +108,21 @@ class GameState:
             try:
                 # Nếu bạn có sẵn self.manager thì dùng, nếu không khởi tạo lại
                 if hasattr(self, 'manager'):
-                    asyncio.create_task(self.manager.broadcast(room_id, {
+                    await self.manager.broadcast(room_id, {
                         "type": "chance_event",
                         "message": message,
                         "player": player_name,
                         "event": event
-                    }))
+                    })
                 else:
                     # fallback nếu self.manager không tồn tại
                     manager = ConnectionManager()
-                    asyncio.create_task(manager.broadcast(room_id, {
+                    await manager.broadcast(room_id, {
                         "type": "chance_event",
                         "message": message,
                         "player": player_name,
                         "event": event
-                    }))
+                    })
             except Exception as e:
                 print(f"[Broadcast Error]: {e}")
 
@@ -382,6 +386,62 @@ class GameState:
 
         return {"success": True, "message": f"Transaction Successful"}
    
+    async def handle_estate_rent(self, room_id: str, player_name: str):
+        player = self.players[room_id][player_name]
+        position = player.current_position
+        tile_name = TILE_MAP[position]
+
+        # Tìm bất động sản tại ô đó
+        estate = next((e for e in self.estates[room_id] if e.position == position), None)
+        if not estate or not estate.owner_name:
+            return  # Không phải bất động sản hoặc chưa có chủ
+
+        if estate.owner_name == player_name:
+            return  # Người chơi là chủ sở hữu → không cần trả
+
+        rent = estate.rent_price
+
+        # Trừ tiền người chơi
+        amount_to_pay = min(player.cash, rent)
+        player.cash -= amount_to_pay
+        player.net_worth -= amount_to_pay
+
+        # Cộng tiền cho chủ mảnh đất
+        owner = self.players[room_id][estate.owner_name]
+        owner.cash += amount_to_pay
+        owner.net_worth += amount_to_pay
+
+        # Cập nhật leaderboard
+        self.update_leaderboard(room_id)
+
+        # Gửi thông báo giao dịch cho cả phòng
+        message = f"{player_name} paid ${amount_to_pay} rent to {estate.owner_name} for landing on {tile_name}."
+        await self.manager.broadcast(room_id, {
+            "type": "estate_rent_paid",
+            "message": message,
+            "payer": player_name,
+            "owner": estate.owner_name,
+            "amount": amount_to_pay,
+            "tile": tile_name
+        })
+
+        # Gửi cập nhật leaderboard
+        await self.manager.broadcast(room_id, {
+            "type": "leaderboard_update",
+            "leaderboard": self.managers[room_id].leader_board
+        })
+
+        # Gửi cập nhật portfolio cho cả 2
+        await self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+        })
+
+        await self.manager.send_to_player(room_id, estate.owner_name, {
+            "type": "portfolio_update",
+            "portfolio": owner.dict()
+        })
+       
     def upgrade_estate(self, room_id: str, player_name: str, estate_name: str, upgrade_cost: float):
         player = self.players[room_id][player_name]
         if player.cash >= upgrade_cost:
@@ -406,6 +466,58 @@ class GameState:
             stock.now_price *= 1.02  # tăng giá 2%
             self.transactions[room_id].append(Transaction(from_=player_name, to="market", amount=total_price, round=self.managers[room_id].current_round))
 
+        
+    
+    # ########################################
+    #           QUIZ
+    # ########################################
+    def send_quiz_question(self, room_id: str, player_name: str):
+        quiz = random.choice(QUIZ_BANK)
+        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            "type": "quiz_question",
+            "question_id": quiz["id"],
+            "question": quiz["question"],
+            "options": quiz["options"]
+        }))
+        return quiz["id"]
+
+# Xử lý câu trả lời từ người chơi
+    def handle_quiz_answer(self, room_id: str, player_name: str, question_id: int, answer_index: int) -> bool:
+        player = self.players[room_id][player_name]
+        quiz = next((q for q in QUIZ_BANK if q["id"] == question_id), None)
+
+        if not quiz:
+            return False
+
+        correct = (quiz["correct_index"] == answer_index)
+
+        if correct:
+            player.cash += REWARD_AMOUNT
+            player.net_worth += REWARD_AMOUNT
+            result_msg = f"{player_name} answered quiz correctly and earned ${REWARD_AMOUNT}!"
+        else:
+            result_msg = f"{player_name} answered quiz incorrectly."
+
+        # Cập nhật lại leaderboard
+        self.update_leaderboard(room_id)
+
+        # Gửi thông báo đến tất cả người chơi
+        asyncio.create_task(self.manager.broadcast(room_id, {
+            "type": "quiz_result",
+            "player": player_name,
+            "correct": correct,
+            "message": result_msg
+        }))
+
+        # Cập nhật portfolio người chơi
+        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+        }))
+
+        return correct
+    
+    
     # ########################################
     #           SAVING
     # ########################################
@@ -429,6 +541,8 @@ class GameState:
     # ########################################
     #           UNUSE
     # ########################################
+
+
     def process_turn(self, room_id: str) -> dict:
         """
         Hàm này có thể được gọi khi người chơi click 'Roll Dice'.

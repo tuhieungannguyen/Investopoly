@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from typing import Dict, List
@@ -144,7 +144,7 @@ async def roll_dice(request: RollDiceRequest):
     dice_roll = state.roll_dice()
 
     # Update player position
-    tile = state.move_player(room_id, player_name, dice_roll)
+    tile = await state.move_player(room_id, player_name, dice_roll)
 
     # Broadcast updated leaderboard
     await manager.broadcast(room_id, {
@@ -154,17 +154,7 @@ async def roll_dice(request: RollDiceRequest):
 
     # Process tile effects
     owner = state.get_tile_owner(room_id, tile)
-    transaction = None
-    if owner and owner != player_name:
-        rent = state.get_tile_value(room_id, tile) * 0.2
-        state.players[room_id][player_name].cash -= rent
-        state.players[room_id][owner].cash += rent
-        transaction = Transaction(
-            amount=rent,
-            description=f"Player {player_name} paid {rent} to {owner} for {tile}"
-        )
-        state.transactions[room_id].append(transaction)
-
+    
     # Check if the player can buy the estate or stock
     can_buy_estate = not owner and state.get_tile_value(tile["name"]) > 0
     can_buy_stock = tile["name"] in state.stocks[room_id] and state.stocks[room_id][tile["name"]].available > 0
@@ -199,7 +189,6 @@ async def roll_dice(request: RollDiceRequest):
         "message": "Roll processed",
         "dice": dice_roll,
         "tile": tile,
-        "transaction": transaction.model_dump() if transaction else None,
         "can_buy_estate": can_buy_estate,
         "can_buy_stock": can_buy_stock
     }
@@ -283,8 +272,7 @@ async def end_turn(request: Request):
     return {"message": "Turn ended"}
 
 @app.post("/buy_estate")
-async def buy_estate(body: BuyEstateRequest):
-
+async def buy_estate(body: BuyEstateRequest):  
     room_id = body.room_id
     player_name = body.player_name
 
@@ -301,3 +289,14 @@ async def buy_estate(body: BuyEstateRequest):
         })
 
     return result
+
+
+@app.post("/quiz/answer")
+async def submit_quiz_answer(
+    room_id: str = Body(...),
+    player_name: str = Body(...),
+    question_id: int = Body(...),
+    answer_index: int = Body(...)
+):
+    correct = state.handle_quiz_answer(room_id, player_name, question_id, answer_index)
+    return {"correct": correct}
