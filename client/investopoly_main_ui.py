@@ -62,7 +62,8 @@ shock_popup = None  # Global shock popup
 quiz_popup = None  # Global quiz popup state
 # Define global variable for scroll offset
 scroll_offset = 0
-
+saving_popup = None
+saving_input_text = ""
 
 
 
@@ -224,7 +225,6 @@ async def listen_ws(room_id, player_name):
                     raw_notification = message['message']
                     add_notification(raw_notification)
                     
-                    
                 elif message["type"] == "tile_penalty":
                     raw_notification = message["message"]
                     print("💸 Transaction received:", raw_notification)
@@ -245,6 +245,27 @@ async def listen_ws(room_id, player_name):
                         ws_portfolio = message.get("owner_portfolio", {})
 
                     print("💸 Rent Transaction received:", raw_notification)
+                elif message["type"] == "saving_prompt":
+                    max_amount = message["max_amount"]
+                    saving_popup, saving_input_text
+                    saving_popup = {
+                        "message": message["message"],
+                        "max_amount": max_amount,
+                        "room_id": message["room_id"],
+                        "player_name": message["player_name"]
+                    }
+                    saving_input_text = ""
+                    
+                elif message["type"] == "saving_matured":
+                    print("💰 Your saving is matured and can be withdrawn.")
+                    saving_popup
+                    saving_popup = {
+                        "message": "Your saving is matured. Withdraw now?",
+                        "max_amount": 0,  # unused
+                        "room_id": room_id,
+                        "player_name": player_name,
+                        "withdraw": True
+                    }
                             
 
                 # Update host determination logic
@@ -407,6 +428,39 @@ async def send_sell_request(room_id, player_name):
 
 
 # =====================================
+# CONFIRM DEPOSITE                   ||
+# =====================================
+async def send_ws_saving_deposit(room_id, player_name, amount):
+    uri = f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}"
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps({
+            "action": "saving_deposit",
+            "room_id": room_id,
+            "player_name": player_name,
+            "amount": amount
+        }))
+                
+def confirm_saving_deposit():
+    global saving_popup, saving_input_text
+    try:
+        amount = float(saving_input_text)
+        max_amount = saving_popup["max_amount"]
+        room_id = saving_popup["room_id"]
+        player_name = saving_popup["player_name"]
+
+        if 0 < amount <= max_amount:
+            def send_deposit():
+                asyncio.run(send_ws_saving_deposit(room_id, player_name, amount))
+            threading.Thread(target=send_deposit).start()
+        else:
+            print("Invalid saving amount.")
+    except Exception as e:
+        print(f"Error parsing saving amount: {e}")
+
+    saving_popup = None
+    saving_input_text = ""
+
+# =====================================
 #  END TURN REQUEST                  ||
 # =====================================
 async def send_end_turn_request(room_id, player_name):
@@ -512,6 +566,82 @@ def show_stock_purchase_popup(room_id, player_name):
     root.mainloop()                    
  
 # ===================================
+#  DRAW Saving POPUP                ||
+# ===================================  
+async def send_ws_saving_withdraw(room_id, player_name):
+    uri = f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}"
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps({
+            "action": "saving_withdraw",
+            "room_id": room_id,
+            "player_name": player_name
+        }))
+def draw_saving_popup(surface, popup_data):
+    if popup_data.get("withdraw", False):
+        # Show withdraw confirmation button
+        button_rect = pygame.Rect(popup_rect.x + 240, popup_rect.y + 190, 120, 35)
+        pygame.draw.rect(surface, GRAY, button_rect)
+        pygame.draw.rect(surface, BLACK, button_rect, 2)
+        btn_text = font.render("Withdraw", True, BLACK)
+        surface.blit(btn_text, btn_text.get_rect(center=button_rect.center))
+
+        for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONDOWN and button_rect.collidepoint(pygame.mouse.get_pos()):
+                room_id = popup_data["room_id"]
+                player_name = popup_data["player_name"]
+                def send_withdraw():
+                    asyncio.run(send_ws_saving_withdraw(room_id, player_name))
+                threading.Thread(target=send_withdraw).start()
+                saving_popup = None
+    else:
+        popup_rect = pygame.Rect(300, 200, 600, 250)
+        pygame.draw.rect(surface, WHITE, popup_rect)
+        pygame.draw.rect(surface, BLACK, popup_rect, 3)
+
+        title = "Savings Deposit"
+        message = popup_data["message"]
+        max_amount = popup_data["max_amount"]
+
+        title_text = font_title.render(title, True, (0, 100, 200))
+        surface.blit(title_text, (popup_rect.x + 20, popup_rect.y + 20))
+
+        # Description
+        msg_lines = textwrap.wrap(message, 60)
+        for i, line in enumerate(msg_lines):
+            line_text = font.render(line, True, BLACK)
+            surface.blit(line_text, (popup_rect.x + 20, popup_rect.y + 60 + i * 25))
+
+        # Input box
+        global saving_input_text
+        input_rect = pygame.Rect(popup_rect.x + 100, popup_rect.y + 140, 400, 35)
+        pygame.draw.rect(surface, WHITE, input_rect)
+        pygame.draw.rect(surface, BLACK, input_rect, 2)
+        input_text = font.render(saving_input_text, True, BLACK)
+        surface.blit(input_text, (input_rect.x + 10, input_rect.y + 5))
+
+        # OK button
+        button_rect = pygame.Rect(popup_rect.x + 240, popup_rect.y + 190, 120, 35)
+        pygame.draw.rect(surface, GRAY, button_rect)
+        pygame.draw.rect(surface, BLACK, button_rect, 2)
+        btn_text = font.render("Confirm", True, BLACK)
+        surface.blit(btn_text, btn_text.get_rect(center=button_rect.center))
+
+        # Event handling
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_BACKSPACE:
+                    saving_input_text = saving_input_text[:-1]
+                elif event.key == pygame.K_RETURN:
+                    confirm_saving_deposit()
+                else:
+                    if event.unicode.isdigit():
+                        saving_input_text += event.unicode
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if button_rect.collidepoint(pygame.mouse.get_pos()):
+                    confirm_saving_deposit()
+
+# ===================================
 #  DRAW SHOCK POPUP                ||
 # ===================================  
 def draw_shock_popup(surface, popup_data):
@@ -603,6 +733,16 @@ def handle_button_click(button_label, room_id, player_name):
         # Logic to handle Sell action
         print("Sell button clicked")
         asyncio.run(send_sell_request(room_id, player_name))
+    elif button_label == "Deposit":
+        print("Deposit button clicked")
+        # Trigger saving manually (optional - or just open a popup)
+        if ws_portfolio and ws_portfolio.get("cash", 0) > 0:
+            global saving_popup, saving_input_text
+            saving_popup = {
+                "message": "How much do you want to save?",
+                "max_amount": ws_portfolio.get("cash", 0)
+            }
+            saving_input_text = ""
     elif button_label == "End Turn":
         # Logic to handle End Turn action
         print("End Turn button clicked")
@@ -615,7 +755,7 @@ def handle_button_click(button_label, room_id, player_name):
 def draw_action_buttons(surface, room_id, player_name):
     pygame.draw.rect(surface, GRAY, action_bar)
     pygame.draw.rect(surface, BLACK, action_bar, 2)
-    buttons = ["Roll Dice", "Buy", "Sell", "End Turn"]
+    buttons = ["Roll Dice", "Buy", "Sell", "Deposit", "End Turn"]
     button_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/button_1.png'))
     button_image = pygame.image.load(button_image_path)
 
@@ -695,6 +835,7 @@ def draw_map_with_players(surface, players):
 # =========================================
 def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=None):
     global current_player
+    global current_room
     if not pygame.get_init():
         pygame.init()
     if not pygame.display.get_init():
@@ -788,6 +929,8 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
             draw_quiz_popup(screen, quiz_popup, room_id, player_name)
         if shock_popup:
             draw_shock_popup(screen, shock_popup)
+        if saving_popup:
+            draw_saving_popup(screen, saving_popup)
             
         pygame.display.flip()
         clock.tick(30)
