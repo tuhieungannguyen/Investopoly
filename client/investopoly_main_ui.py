@@ -159,6 +159,27 @@ async def listen_ws(room_id, player_name):
                     event_name = message.get("event", {}).get("name", "Unknown")
                     raw_notification = f"{message['player']} triggered Chance Event: {event_name}"
                     add_notification(raw_notification)
+                    
+                elif message["type"] == "estate_purchased":
+                    # Thông báo chung cho toàn phòng
+                    notification = "\n".join(textwrap.wrap(message["message"], width=38))
+                    add_notification(notification)
+
+                    # Cập nhật bảng xếp hạng
+                    if "leaderboard" in message:
+                        ws_leaderboard = message["leaderboard"]
+
+                    # Nếu có cập nhật danh mục người chơi (optional)
+                    if message.get("player") == player_name:
+                        print(f"You purchased {message.get('tile')} for ${message.get('price')}")
+                elif message["type"] == "portfolio_update":
+                    if message.get("portfolio"):
+                        ws_portfolio = message["portfolio"]
+                        print("📦 Portfolio updated:", ws_portfolio)
+                elif message["type"] == "passed_go":
+                    raw_notification = f"{message['player']} passed GO and received ${message['amount']}"
+                    add_notification(raw_notification)
+                            
 
                 # Update host determination logic
                 is_host_runtime = determine_host(player_name, ws_joined_players)
