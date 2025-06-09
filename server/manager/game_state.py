@@ -121,6 +121,9 @@ class GameState:
         # rent estate
         await self.handle_estate_rent(room_id, player_name)        
         await self.charge_stock_service_fee(room_id, player_name)
+        shock_result = self.trigger_shock_if_applicable(room_id, player_name)
+        if shock_result:
+            print(f"⚠️ Shock triggered: {shock_result['description']}")
         event = self.trigger_chance_if_applicable(room_id, player_name)
         
         if event:
@@ -171,12 +174,13 @@ class GameState:
         next_index = (current_index + 1) % len(members)
         manager.current_player = members[next_index]
         manager.current_played += 1
-        self.distribute_stock_dividends(room_id)   
+         
         # Nếu tất cả đã chơi trong round
         if manager.current_played >= len(members):
             manager.current_round += 1
             manager.current_played = 0
-
+            asyncio.create_task(self.distribute_stock_dividends(room_id))  
+            
     def add_player_to_room(self, room_id: str, player_name: str):
         if room_id not in self.rooms:
             self.init_room(room_id, [player_name])
@@ -267,15 +271,78 @@ class GameState:
         return 0.0
    
     # ########################################
-    #           EVENT 
+    #           SHOCK EVENT 
     # ########################################
     def apply_shock_event(self, room_id: str, player_name: str) -> str:
         import random
-        event = random.choice(SHOCK_EVENTS)
-        self.events[room_id].append(EventRecord(name=event["name"], start=event["start"], end=event["end"]))
-        # Cập nhật giá trị cổ phiếu, bất động sản dựa trên event
-        return f"Sự kiện shock: {event['name']}"
 
+        event = random.choice(SHOCK_EVENTS)
+        name = event["name"]
+        description = event["description"]
+        effect_stock = event["effect_stock"]
+        effect_estate = event["effect_estate"]
+
+        # Ghi nhận event
+        self.events[room_id].append(EventRecord(
+            name=name,
+            start=self.managers[room_id].current_round,
+            end=self.managers[room_id].current_round + 3
+        ))
+
+        # Cập nhật cổ phiếu
+        for effect in effect_stock:
+            stock_name = effect["name"]
+            delta = effect["amount"]
+
+            if stock_name in self.stocks[room_id]:
+                stock = self.stocks[room_id][stock_name]
+                stock.now_price = max(1, round(stock.now_price * (1 + delta / 100), 2))  # Giá tối thiểu là 1
+
+        # Cập nhật bất động sản
+        for estate in self.estates[room_id]:
+            if effect_estate.get("value") != 0:
+                estate.price = max(1, round(estate.price * (1 + effect_estate["value"] / 100), 2))
+            if effect_estate.get("rent") != 0:
+                estate.rent_price = max(1, round(estate.rent_price * (1 + effect_estate["rent"] / 100), 2))
+
+        # Cập nhật tài sản ròng cho tất cả người chơi
+        for p in self.players[room_id].values():
+            p.net_worth = self.calculate_net_worth(room_id, p.player_name)
+
+        # Cập nhật bảng xếp hạng
+        self.update_leaderboard(room_id)
+
+        # Broadcast đến cả phòng
+        asyncio.create_task(self.manager.broadcast(room_id, {
+            "type": "shock_event",
+            "message": f"Shock Event: {name} - {description}",
+            "stocks": [
+                {
+                    **self.stocks[room_id][s["name"]].dict(),
+                    "base_price": self.stocks[room_id][s["name"]].start_price
+                }
+                for s in effect_stock if s["name"] in self.stocks[room_id]
+            ],
+            "estate_effect": effect_estate
+        }))
+
+        return f"Shock Event Triggered: {name}"
+
+    def trigger_shock_if_applicable(self, room_id: str, player_name: str) -> Optional[dict]:
+        player = self.players[room_id][player_name]
+        position = player.current_position
+
+        # Giả sử ô shock là ô số 5 và 15
+        if position not in [7, 17]:
+            return None
+
+        result_msg = self.apply_shock_event(room_id, player_name)
+        return {"event": "shock", "description": result_msg}
+    
+    
+    # ########################################
+    #          CHANCE EVENT 
+    # ########################################
     # Apply chance event
     def apply_chance_event(self, room_id: str, player_name: str) -> str:
         import random
@@ -580,10 +647,6 @@ class GameState:
         
     async def distribute_stock_dividends(self, room_id: str):
         manager = self.managers[room_id]
-
-        if manager.current_played < len(self.rooms[room_id].roomMember):
-            return  # Chưa kết thúc vòng → không chia cổ tức
-
         for stock_name, revenue in self.stock_revenue[room_id].items():
             EPS = revenue / 5
             dividend_per_share = EPS * 0.3
@@ -606,7 +669,7 @@ class GameState:
             # Gửi broadcast cổ tức
             await self.manager.broadcast(room_id, {
                 "type": "dividend_distributed",
-                "message": f"Stock {stock_name} distributed dividends to shareholders. EPS = ${EPS:.2f}, Dividend per share = ${dividend_per_share:.2f}"
+                "message": f"Stock {stock_name}: EPS = ${EPS:.2f}, Dividend = ${dividend_per_share:.2f}"
             })
 
             self.stock_revenue[room_id][stock_name] = 0  # Reset

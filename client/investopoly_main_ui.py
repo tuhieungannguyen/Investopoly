@@ -58,7 +58,7 @@ ws_portfolio = {}
 # Define global variable for current round
 current_round = None
 current_player = None
-
+shock_popup = None  # Global shock popup
 quiz_popup = None  # Global quiz popup state
 # Define global variable for scroll offset
 scroll_offset = 0
@@ -191,8 +191,26 @@ async def listen_ws(room_id, player_name):
                     # Thông báo chung cho toàn phòng
                     notification = "\n".join(textwrap.wrap(message["message"], width=38))
                     add_notification(notification)
+                    
+                elif message["type"] == "dividend_distributed":
+                    # Thông báo chung cho toàn phòng
+                    notification = "\n".join(textwrap.wrap(message["message"], width=38))
+                    add_notification(notification)
+                    print("Dividend distributed:", message["message"])
+                    
+                elif message["type"] == "stock_service_fee":
+                    # Thông báo chung cho toàn phòng
+                    notification = "\n".join(textwrap.wrap(message["message"], width=38))
+                    add_notification(notification)
 
-                        
+                elif message["type"] == "shock_event":
+                    global shock_popup
+                    shock_popup = {
+                        "title": "⚡ Shock Event",
+                        "message": message["message"],
+                        "stocks": message.get("stocks", []),
+                        "estate_effect": message.get("estate_effect", {})
+                    }     
                 elif message["type"] == "portfolio_update":
                     if message.get("portfolio"):
                         ws_portfolio = message["portfolio"]
@@ -461,8 +479,7 @@ def show_buy_popup(room_id, player_name):
  
 # ===================================
 #  SHOW STOCK POPUP                ||
-# ===================================             
-                    
+# ===================================                              
 def show_stock_purchase_popup(room_id, player_name):
     import tkinter as tk
     from tkinter import simpledialog
@@ -493,7 +510,69 @@ def show_stock_purchase_popup(room_id, player_name):
 
     tk.Button(root, text="Buy", command=submit_stock_purchase).pack()
     root.mainloop()                    
-                  
+ 
+# ===================================
+#  DRAW SHOCK POPUP                ||
+# ===================================  
+def draw_shock_popup(surface, popup_data):
+    popup_rect = pygame.Rect(150, 150, 900, 400)
+    pygame.draw.rect(surface, WHITE, popup_rect)
+    pygame.draw.rect(surface, BLACK, popup_rect, 3)
+
+    title = popup_data["title"]
+    message = popup_data["message"]
+    stocks = popup_data.get("stocks", [])
+    estate_effect = popup_data.get("estate_effect", {})
+
+    # Title
+    title_text = font_title.render(title, True, (200, 0, 0))
+    surface.blit(title_text, (popup_rect.x + 20, popup_rect.y + 20))
+
+    # Wrapped message
+    wrapped_lines = textwrap.wrap(message, width=100)
+    for i, line in enumerate(wrapped_lines):
+        line_text = font.render(line, True, BLACK)
+        surface.blit(line_text, (popup_rect.x + 20, popup_rect.y + 60 + i * 25))
+
+    # Stock Effects
+    stock_start_y = popup_rect.y + 60 + len(wrapped_lines) * 25 + 10
+    if stocks:
+        surface.blit(font_title.render("Stock Effects:", True, BLACK), (popup_rect.x + 20, stock_start_y))
+        for i, s in enumerate(stocks):
+            base_price = s.get("base_price") or s.get("start_price") or s.get("now_price", 1)
+            now_price = s.get("now_price", 1)
+            delta = round((now_price - base_price) / base_price * 100, 2) if base_price else 0
+            color = (0, 150, 0) if delta > 0 else (200, 0, 0)
+            sign = "+" if delta > 0 else ""
+            stock_line = f"{s['name']} → ${now_price:.2f} ({sign}{delta:.2f}%)"
+            surface.blit(font.render(stock_line, True, color), (popup_rect.x + 40, stock_start_y + 30 + i * 22))
+
+    # Estate Effects
+    estate_y = stock_start_y + 30 + len(stocks) * 22 + 10
+    if estate_effect:
+        surface.blit(font_title.render("Estate Effects:", True, BLACK), (popup_rect.x + 20, estate_y))
+        value_delta = estate_effect.get("value", 0)
+        rent_delta = estate_effect.get("rent", 0)
+        v_sign = "+" if value_delta > 0 else ""
+        r_sign = "+" if rent_delta > 0 else ""
+        v_text = f"Value change: {v_sign}{value_delta}%"
+        r_text = f"Rent change: {r_sign}{rent_delta}%"
+        surface.blit(font.render(v_text, True, BLACK), (popup_rect.x + 40, estate_y + 30))
+        surface.blit(font.render(r_text, True, BLACK), (popup_rect.x + 40, estate_y + 55))
+
+    # OK Button
+    button_rect = pygame.Rect(popup_rect.x + 380, popup_rect.y + 340, 140, 35)
+    pygame.draw.rect(surface, GRAY, button_rect)
+    pygame.draw.rect(surface, BLACK, button_rect, 2)
+    text = font.render("OK", True, BLACK)
+    surface.blit(text, text.get_rect(center=button_rect.center))
+
+    # Handle click to dismiss popup
+    for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
+        if button_rect.collidepoint(pygame.mouse.get_pos()):
+            global shock_popup
+            shock_popup = None
+
 # ===================================
 #  CALL BUY STOCK API              ||
 # ===================================                   
@@ -707,6 +786,8 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
 
         if quiz_popup:
             draw_quiz_popup(screen, quiz_popup, room_id, player_name)
+        if shock_popup:
+            draw_shock_popup(screen, shock_popup)
             
         pygame.display.flip()
         clock.tick(30)

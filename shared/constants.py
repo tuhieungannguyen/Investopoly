@@ -72,7 +72,7 @@ TILE_MAP = [
 SHOCK_EVENTS = [
     {
         "name": "Global Pandemic",
-        "description": "Một biến thể virus mới khiến các thành phố phong tỏa. Nhà máy và sân bay đóng cửa.",
+        "description": "A new virus variant forces city lockdowns. Factories and airports are shut down.",
         "effect_stock": [
             {"name": "VCB", "amount": -20},
             {"name": "VIC", "amount": -20},
@@ -87,7 +87,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "Global Financial Crisis",
-        "description": "Các ngân hàng và định chế tài chính sụp đổ, niềm tin thị trường lao dốc.",
+        "description": "Banks and financial institutions collapse, shaking market confidence.",
         "effect_stock": [
             {"name": "VCB", "amount": -20},
             {"name": "VIC", "amount": -20},
@@ -102,7 +102,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "US Tariff Policy",
-        "description": "Hoa Kỳ áp thuế 46% lên hàng Việt Nam, công nghệ & năng lượng chịu ảnh hưởng.",
+        "description": "The US imposes a 46% tariff on Vietnamese goods. Tech and energy sectors are hit.",
         "effect_stock": [
             {"name": "VCB", "amount": 10},
             {"name": "VIC", "amount": 10},
@@ -117,7 +117,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "Geopolitical Crisis",
-        "description": "Chiến tranh châu Âu leo thang khiến giá năng lượng và cổ phiếu biến động mạnh.",
+        "description": "Escalating European war causes sharp fluctuations in energy and stock prices.",
         "effect_stock": [
             {"name": "VCB", "amount": -10},
             {"name": "VIC", "amount": -10},
@@ -132,7 +132,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "Global Meltdown",
-        "description": "Quỹ đầu cơ lớn phá sản gây hiệu ứng lan truyền toàn cầu.",
+        "description": "A major hedge fund collapses, triggering a worldwide chain reaction.",
         "effect_stock": [
             {"name": "VCB", "amount": -10},
             {"name": "VIC", "amount": -10},
@@ -147,7 +147,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "EVFTA Takes Effect",
-        "description": "Hiệp định thương mại tự do EU-VN tạo cú hích xuất khẩu.",
+        "description": "The EU-Vietnam Free Trade Agreement boosts exports.",
         "effect_stock": [
             {"name": "VCB", "amount": 15},
             {"name": "FPT", "amount": 15},
@@ -159,7 +159,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "U.S.-China Trade War",
-        "description": "Chiến tranh thương mại khiến chuỗi cung ứng chuyển về Việt Nam.",
+        "description": "Trade tensions drive global supply chains to shift toward Vietnam.",
         "effect_stock": [
             {"name": "FPT", "amount": 20},
             {"name": "GAS", "amount": 20},
@@ -171,7 +171,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "Post-COVID Tourism Rebound",
-        "description": "Du lịch và logistics bùng nổ hậu đại dịch.",
+        "description": "Tourism and logistics boom in the post-pandemic era.",
         "effect_stock": [
             {"name": "FPT", "amount": 20},
             {"name": "GAS", "amount": 20},
@@ -184,7 +184,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "Vietnam Becomes Asia’s Factory Hub",
-        "description": "Việt Nam trở thành trung tâm sản xuất thay thế Trung Quốc.",
+        "description": "Vietnam emerges as the new manufacturing hub, replacing China.",
         "effect_stock": [
             {"name": "FPT", "amount": 20},
             {"name": "GAS", "amount": 20},
@@ -197,7 +197,7 @@ SHOCK_EVENTS = [
     },
     {
         "name": "MSCI Watchlist Upgrade",
-        "description": "Việt Nam được đưa vào danh sách chờ nâng hạng MSCI.",
+        "description": "Vietnam is added to MSCI’s upgrade watchlist.",
         "effect_stock": [
             {"name": "VCB", "amount": 20},
             {"name": "VIC", "amount": 20},
