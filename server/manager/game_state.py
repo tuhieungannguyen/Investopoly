@@ -21,6 +21,8 @@ class GameState:
         self.chances: Dict[str, List[ChanceLog]] = {}
         self.transactions: Dict[str, List[Transaction]] = {}
         self.manager = manager
+        self.stock_revenue: Dict[str, Dict[str, float]] = {}  
+        
         
     def init_room(self, room_id: str, members: List[str]):
         self.rooms[room_id] = Room(roomId=room_id, roomMember=members, status="waiting")
@@ -56,12 +58,13 @@ class GameState:
                 max_per_player=stock["max_per_player"]
             )
             for stock in STOCKS
-}
+        }
         self.jails[room_id] = {}
         self.saving_records[room_id] = []
         self.events[room_id] = []
         self.chances[room_id] = []
         self.transactions[room_id] = []
+        self.stock_revenue[room_id] = {stock["name"]: 0.0 for stock in STOCKS}
 
 
     # ==================================================
@@ -87,9 +90,7 @@ class GameState:
         # Check if the player passed the GO tile
         if new_position < old_position:
             player.cash += GO_REWARD  # Add $200 to the player's cash
-            player.net_worth = player.cash + sum(
-                estate.price for estate in self.estates[room_id] if estate.owner_name  == player_name
-            )  # Recalculate net worth
+            player.net_worth = self.calculate_net_worth(room_id,player_name)
 
             # Update the leaderboard
             self.update_leaderboard(room_id)
@@ -119,7 +120,7 @@ class GameState:
              
         # rent estate
         await self.handle_estate_rent(room_id, player_name)        
-
+        await self.charge_stock_service_fee(room_id, player_name)
         event = self.trigger_chance_if_applicable(room_id, player_name)
         
         if event:
@@ -170,7 +171,7 @@ class GameState:
         next_index = (current_index + 1) % len(members)
         manager.current_player = members[next_index]
         manager.current_played += 1
-
+        self.distribute_stock_dividends(room_id)   
         # Nếu tất cả đã chơi trong round
         if manager.current_played >= len(members):
             manager.current_round += 1
@@ -221,7 +222,8 @@ class GameState:
             ])
             estate_value = sum(e.value for e in self.estates[room_id] if e.owner == player.player_name)
 
-            player.net_worth = round(player.cash + player.saving + stock_value + estate_value, 2)
+            player.net_worth = self.calculate_net_worth(room_id,player.player_name)
+
 
             final_scores.append({
                 "player": player.player_name,
@@ -310,7 +312,8 @@ class GameState:
             print(f"   🔖 Bonus effect '{event['name']}' stored for later.")
         elif event_type == "plus":
             player.cash += amount
-            player.net_worth += amount
+            player.net_worth = self.calculate_net_worth(room_id,  player_name)
+
             print(f"   +${amount} added.")
         elif event_type == "minus":
             deduction = min(player.cash, amount)
@@ -424,7 +427,7 @@ class GameState:
         # Trừ tiền người chơi
         amount_to_pay = min(player.cash, rent)
         player.cash -= amount_to_pay
-        player.net_worth -= amount_to_pay
+        player.net_worth = self.calculate_net_worth(room_id,player_name)
 
         # Cộng tiền cho chủ mảnh đất
         owner = self.players[room_id][estate.owner_name]
@@ -515,7 +518,8 @@ class GameState:
         old_price = stock.now_price
         stock.now_price *= 1.02
         # Update net worth
-        player.net_worth = player.cash + sum([e.price for e in self.estates[room_id] if e.owner_name == player_name])
+        player.net_worth = self.calculate_net_worth(room_id,player_name)
+
 
         # Update leaderboard
         self.update_leaderboard(room_id)
@@ -536,6 +540,77 @@ class GameState:
 
         return {"success": True, "message": f"Successfully bought {quantity} of {stock.name}."}
             
+    async def charge_stock_service_fee(self, room_id: str, player_name: str):
+        player = self.players[room_id][player_name]
+        current_pos = player.current_position
+
+        # Tìm cổ phiếu tương ứng với vị trí
+        stock = next((s for s in self.stocks[room_id].values() if s.position == current_pos), None)
+        if not stock:
+            return  # Không ở ô cổ phiếu → bỏ qua
+
+        fee = stock.service_fee
+        actual_fee = min(fee, player.cash)
+        player.cash -= actual_fee
+        player.net_worth = self.calculate_net_worth(room_id,player_name)
+
+
+        # Lưu doanh thu cổ phiếu
+        self.stock_revenue[room_id][stock.name] += actual_fee
+
+        # Broadcast cập nhật
+        await self.manager.broadcast(room_id, {
+            "type": "stock_service_fee",
+            "message": f"{player_name} paid ${actual_fee} service fee for landing on {stock.name} stock tile.",
+            "player": player_name,
+            "stock": stock.name,
+            "amount": actual_fee
+        })
+
+        self.update_leaderboard(room_id)
+        await self.manager.broadcast(room_id, {
+            "type": "leaderboard_update",
+            "leaderboard": self.managers[room_id].leader_board
+        })
+        await self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+        })
+        
+        
+    async def distribute_stock_dividends(self, room_id: str):
+        manager = self.managers[room_id]
+
+        if manager.current_played < len(self.rooms[room_id].roomMember):
+            return  # Chưa kết thúc vòng → không chia cổ tức
+
+        for stock_name, revenue in self.stock_revenue[room_id].items():
+            EPS = revenue / 5
+            dividend_per_share = EPS * 0.3
+
+            for player_name in self.players[room_id]:
+                player = self.players[room_id][player_name]
+                shares = player.stocks.get(stock_name, 0)
+                if shares > 0:
+                    dividend = round(dividend_per_share * shares, 2)
+                    player.cash += dividend
+                    player.net_worth = self.calculate_net_worth(room_id,player_name)
+
+
+                    # Gửi portfolio update
+                    await self.manager.send_to_player(room_id, player_name, {
+                        "type": "portfolio_update",
+                        "portfolio": player.dict()
+                    })
+
+            # Gửi broadcast cổ tức
+            await self.manager.broadcast(room_id, {
+                "type": "dividend_distributed",
+                "message": f"Stock {stock_name} distributed dividends to shareholders. EPS = ${EPS:.2f}, Dividend per share = ${dividend_per_share:.2f}"
+            })
+
+            self.stock_revenue[room_id][stock_name] = 0  # Reset
+
     
     # ########################################
     #           QUIZ
@@ -562,7 +637,7 @@ class GameState:
 
         if correct:
             player.cash += REWARD_AMOUNT
-            player.net_worth += REWARD_AMOUNT
+            player.net_worth = self.calculate_net_worth(room_id,player_name)
             result_msg = f"{player_name} answered quiz correctly and earned ${REWARD_AMOUNT}!"
         else:
             result_msg = f"{player_name} answered quiz incorrectly."
@@ -618,9 +693,7 @@ class GameState:
         if player.current_position == 18:
             penalty_amount = TAX_AMOUNT
             player.cash = max(0, player.cash - penalty_amount)
-            player.net_worth = player.cash + sum(
-                estate.price for estate in self.estates[room_id] if estate.owner_name == player_name
-            )
+            player.net_worth = self.calculate_net_worth(room_id,player_name)
 
             # Cập nhật leaderboard
             self.update_leaderboard(room_id)
@@ -646,40 +719,6 @@ class GameState:
             })
         
     
-    # ########################################
-    #           UNUSE
-    # ########################################
-
-
-    def process_turn(self, room_id: str) -> dict:
-        """
-        Hàm này có thể được gọi khi người chơi click 'Roll Dice'.
-        Nó xử lý: tung xúc xắc → di chuyển → xử lý ô hiện tại.
-        """
-        current_player = self.managers[room_id].current_player
-        dice = self.roll_dice()
-        tile = self.move_player(room_id, current_player, dice)
-        result = self.apply_tile_effect(room_id, current_player, tile)
-        # self.players[room_id][current_player].round_played += 1
-        return {
-            "player": current_player,
-            "dice": dice,
-            "tile": tile,
-            "effect": result
-        }
-
-    def end_turn(self, room_id: str):
-        """Gọi sau khi người chơi kết thúc lượt để sang người kế tiếp."""
-        manager = self.managers[room_id]
-        players = self.rooms[room_id].roomMember
-        idx = players.index(manager.current_player)
-        next_idx = (idx + 1) % len(players)
-        manager.current_player = players[next_idx]
-        manager.current_played += 1
-
-        if manager.current_played >= len(players):
-            manager.current_round += 1
-            manager.current_played = 0
 
     def get_player_position(self, room_id: str, player_name: str) -> Optional[int]:
         """
@@ -740,3 +779,26 @@ class GameState:
         print("\n📄 --- GHI NHỚ GIAO DỊCH ---")
         for txn in self.transactions[room_id]:
             print(f"• Round {txn.round}: {txn.from_player} → {txn.to_player} ${txn.amount}")
+
+
+    def calculate_net_worth(self, room_id: str, player_name: str) -> float:
+        player = self.players[room_id][player_name]
+
+        # Tính tổng giá trị cổ phiếu
+        stock_value = sum(
+            self.stocks[room_id][stock_name].now_price * quantity
+            for stock_name, quantity in player.stocks.items()
+            if stock_name in self.stocks[room_id]
+        )
+
+        # Tính tổng giá trị bất động sản sở hữu
+        estate_value = sum(
+            estate.price
+            for estate in self.estates[room_id]
+            if estate.owner_name == player_name
+        )
+
+        # Tài sản ròng = Tiền mặt + Giá trị cổ phiếu + Bất động sản + Tiết kiệm
+        net_worth = player.cash + stock_value + estate_value + player.saving
+
+        return round(net_worth, 2)
