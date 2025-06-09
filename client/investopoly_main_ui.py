@@ -59,6 +59,7 @@ ws_portfolio = {}
 current_round = None
 current_player = None
 
+quiz_popup = None  # Global quiz popup state
 # Define global variable for scroll offset
 scroll_offset = 0
 
@@ -143,6 +144,19 @@ async def listen_ws(room_id, player_name):
                             if p["player_name"] == player["player_name"]:
                                 p["current_position"] = player["current_position"]
                                 break
+                            
+                elif message["type"] == "quiz_start":
+                    raw_notification = f"{message['message']}"
+                    notification = "\n".join(textwrap.wrap(raw_notification, width=30))
+                    add_notification(notification)
+
+                elif message["type"] == "quiz_question":
+                    global quiz_popup
+                    quiz_popup = {
+                        "question_id": message["question_id"],
+                        "question": message["question"],
+                        "options": message["options"]
+                    }
 
                 elif message["type"] == "error":
                     # Handle error messages from the server
@@ -172,13 +186,31 @@ async def listen_ws(room_id, player_name):
                     # Nếu có cập nhật danh mục người chơi (optional)
                     if message.get("player") == player_name:
                         print(f"You purchased {message.get('tile')} for ${message.get('price')}")
+                        
                 elif message["type"] == "portfolio_update":
                     if message.get("portfolio"):
                         ws_portfolio = message["portfolio"]
                         print("📦 Portfolio updated:", ws_portfolio)
+                        
                 elif message["type"] == "passed_go":
                     raw_notification = f"{message['player']} passed GO and received ${message['amount']}"
                     add_notification(raw_notification)
+                    
+                elif message["type"] == "estate_rent_paid":
+                    raw_notification = message["message"]
+                    add_notification(raw_notification)
+
+                    # Cập nhật leaderboard nếu có
+                    if "leaderboard" in message:
+                        ws_leaderboard = message["leaderboard"]
+
+                    # Nếu player là người chơi hiện tại, cập nhật portfolio của họ
+                    if message.get("payer") == player_name:
+                        ws_portfolio = message.get("payer_portfolio", {})
+                    elif message.get("owner") == player_name:
+                        ws_portfolio = message.get("owner_portfolio", {})
+
+                    print("💸 Rent Transaction received:", raw_notification)
                             
 
                 # Update host determination logic
@@ -265,7 +297,47 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
 
 
 # ===================================
-#  DRAW TOP BAR                  ||
+#  DRAW QUIZ POPUP                 ||
+# ===================================
+def draw_quiz_popup(surface, quiz_data, room_id, player_name):
+    popup_rect = pygame.Rect(300, 200, 600, 300)
+    pygame.draw.rect(surface, WHITE, popup_rect)
+    pygame.draw.rect(surface, BLACK, popup_rect, 3)
+
+    question = quiz_data["question"]
+    options = quiz_data["options"]
+    question_id = quiz_data["question_id"]
+
+    wrapped_question = textwrap.wrap(question, width=60)
+    for i, line in enumerate(wrapped_question):
+        text = font.render(line, True, BLACK)
+        surface.blit(text, (popup_rect.x + 20, popup_rect.y + 20 + i * 25))
+
+    button_rects = []
+    for i, opt in enumerate(options):
+        btn_rect = pygame.Rect(popup_rect.x + 50, popup_rect.y + 100 + i * 40, 500, 35)
+        pygame.draw.rect(surface, LIGHT_GRAY, btn_rect)
+        pygame.draw.rect(surface, BLACK, btn_rect, 2)
+        text = font.render(opt, True, BLACK)
+        surface.blit(text, (btn_rect.x + 10, btn_rect.y + 5))
+        button_rects.append((btn_rect, i))
+
+    # Handle button click
+    for event in pygame.event.get(pygame.MOUSEBUTTONDOWN):
+        mouse_pos = pygame.mouse.get_pos()
+        for rect, idx in button_rects:
+            if rect.collidepoint(mouse_pos):
+                # Call coroutine in separate thread-safe context
+                def submit_answer():
+                    asyncio.run(send_quiz_answer(room_id, player_name, question_id, idx))
+                threading.Thread(target=submit_answer).start()
+
+                global quiz_popup
+                
+                quiz_popup = None
+                
+# ===================================
+#  DRAW TOP BAR                    ||
 # ===================================
 def draw_top_bar(surface, room, player, round):
     pygame.draw.rect(surface, BLUE, top_bar)
@@ -320,6 +392,26 @@ async def send_end_turn_request(room_id, player_name):
                 current_round = data.get("round", current_round)
             else:
                 print(f"Failed to end turn: {response.status}")
+
+# =====================================
+#  SEND ANSWER REQUEST               ||
+# =====================================
+
+async def send_quiz_answer(room_id, player_name, question_id, answer_index):
+    url = f"http://{SERVER_HOST}:8000/quiz/answer"
+    payload = {
+        "room_id": room_id,
+        "player_name": player_name,
+        "question_id": question_id,
+        "answer_index": answer_index
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload) as response:
+            if response.status == 200:
+                data = await response.json()
+                print(data.get("message", "Quiz answer submitted."))
+            else:
+                print(f"❌ Failed to submit quiz answer: {response.status}")
 
 
 # ===================================
@@ -515,6 +607,9 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
                     except Exception as err:
                         print(f"Error sending roll request: {err}")
 
+        if quiz_popup:
+            draw_quiz_popup(screen, quiz_popup, room_id, player_name)
+            
         pygame.display.flip()
         clock.tick(30)
 

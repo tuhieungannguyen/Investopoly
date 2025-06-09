@@ -11,11 +11,15 @@ class ConnectionManager:
         self.active_rooms[room_id]["sockets"][player_name] = websocket
 
     def disconnect(self, room_id: str, player_name: str):
-        if room_id in self.active_rooms:
-            self.active_rooms[room_id]["players"].remove(player_name)
-            del self.active_rooms[room_id]["sockets"][player_name]
-            if not self.active_rooms[room_id]["players"]:
-                del self.active_rooms[room_id]  # Xóa phòng nếu không còn ai
+        try:
+            if room_id in self.active_rooms and player_name in self.active_rooms[room_id]["sockets"]:
+                del self.active_rooms[room_id]["sockets"][player_name]
+
+                # Nếu phòng không còn người → có thể cleanup
+                if not self.active_rooms[room_id]["sockets"]:
+                    del self.active_rooms[room_id]
+        except Exception as e:
+            print(f"[Disconnect Error] player {player_name} in room {room_id}: {e}")
 
     async def broadcast(self, room_id: str, message: dict):
         if room_id in self.active_rooms:
