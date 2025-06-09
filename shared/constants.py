@@ -15,13 +15,15 @@ GO_REWARD = 200  # Amount of money received when passing GO
 PLAYER_COUNT = 4  # Default number of players in the game
 
 # === STOCKS ===
+STOCK_POSITIONS = [2, 6, 12, 14, 16]
 STOCKS = [
-    {"name": "VCB", "price": 100, "min_price": 50, "max_price": 200},
-    {"name": "VIC", "price": 100, "min_price": 50, "max_price": 200},
-    {"name": "FPT", "price": 100, "min_price": 50, "max_price": 200},
-    {"name": "GAS", "price": 100, "min_price": 50, "max_price": 200},
-    {"name": "SAB", "price": 100, "min_price": 50, "max_price": 200},
+    {"name": "SAB", "industry": "A", "start_price": 200, "now_price": 200, "service_fee": 80, "available_units": 5, "max_per_player": 3, "position": 2},
+    {"name": "FPT", "industry": "B", "start_price": 300, "now_price": 300, "service_fee": 100, "available_units": 5, "max_per_player": 3, "position": 6},
+    {"name": "GAS", "industry": "C", "start_price": 300, "now_price": 300, "service_fee": 100, "available_units": 5, "max_per_player": 3, "position": 12},
+    {"name": "VCB", "industry": "D", "start_price": 400, "now_price": 400, "service_fee": 120, "available_units": 5, "max_per_player": 3, "position": 14},
+    {"name": "VIC", "industry": "E", "start_price": 400, "now_price": 400, "service_fee": 120, "available_units": 5, "max_per_player": 3, "position": 16},
 ]
+
 # === ESTATES ===
 ESTATES = [
     {"name": "Real Estate 1", "position": 1, "price": 100, "rent_price": 10},

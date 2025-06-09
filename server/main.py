@@ -6,6 +6,7 @@ from typing import Dict, List
 from fastapi.responses import JSONResponse
 
 from server.request.buy_estate import BuyEstateRequest
+from server.request.buy_stock import BuyStockRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.join_room import JoinRoomRequest
@@ -300,3 +301,24 @@ async def submit_quiz_answer(
 ):
     correct = state.handle_quiz_answer(room_id, player_name, question_id, answer_index)
     return {"correct": correct}
+
+
+@app.post("/buy_stock")
+async def buy_stock_api(request: BuyStockRequest):
+    room_id = request.room_id
+    player_name = request.player_name
+    amount = request.amount
+
+    
+    print(room_id, player_name, amount)
+    
+    # kiểm tra room và player tồn tại
+    if room_id not in state.players or player_name not in state.players[room_id]:
+        raise HTTPException(status_code=404, detail="Room or player not found.")
+
+    result = state.buy_stock(room_id, player_name, amount)
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return {"message": result["message"]}

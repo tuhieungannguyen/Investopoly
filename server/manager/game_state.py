@@ -2,7 +2,7 @@ import asyncio
 from random import randint
 import random
 from typing import Dict, List, Optional
-from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT, TAX_AMOUNT
+from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, STOCKS, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT, TAX_AMOUNT
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
 from server.manager.connection import ConnectionManager
 
@@ -43,7 +43,20 @@ class GameState:
             )
             for e in ESTATES
         ]
-        self.stocks[room_id] = {}
+        self.stocks[room_id] = {
+            stock["name"]: Stock(
+                name=stock["name"],
+                industry=stock["industry"],
+                start_price=stock["start_price"],
+                now_price=stock["now_price"],
+                service_fee=stock["service_fee"],
+                owner_list=[],
+                position=stock["position"],
+                available_units=stock["available_units"],
+                max_per_player=stock["max_per_player"]
+            )
+            for stock in STOCKS
+}
         self.jails[room_id] = {}
         self.saving_records[room_id] = []
         self.events[room_id] = []
@@ -230,7 +243,7 @@ class GameState:
 
 
     # ==================================================
-    # PROPERTY                                        ||                        
+    # PROPERTY                                        ||  
     # ==================================================
     # ########################################
     #          HELPER FUNCTION
@@ -462,18 +475,67 @@ class GameState:
     #           STOCK
     # ########################################
 
-    def buy_stock(self, room_id: str, player_name: str, stock_name: str, amount: int):
-        stock = self.stocks[room_id][stock_name]
+    def buy_stock(self, room_id: str, player_name: str, quantity: int):
         player = self.players[room_id][player_name]
-        total_price = stock.now_price * amount
-        if player.cash >= total_price:
-            player.cash -= total_price
-            player.stocks[stock_name] = player.stocks.get(stock_name, 0) + amount
-            stock.owner_list.append(player_name)
-            stock.now_price *= 1.02  # tăng giá 2%
-            self.transactions[room_id].append(Transaction(from_=player_name, to="market", amount=total_price, round=self.managers[room_id].current_round))
+        current_position = player.current_position
 
-        
+        # Check if standing on a stock tile
+        stock = next((s for s in self.stocks[room_id].values() if s.position == current_position), None)
+     
+        print("stock: ", stock)
+        if not stock:
+            return {"success": False, "message": "Not on a stock tile."}
+        # Check availability
+        if stock.available_units < quantity:
+             return {"success": False, "message":"Not enough stock available."}
+
+        # Check player's current holdings
+        owned = player.stocks.get(stock.name, 0)
+        if owned + quantity > stock.max_per_player:
+            return {"error": f"Cannot own more than {stock.max_per_player} units."}
+
+        total_price = stock.now_price * quantity
+        if player.cash < total_price:
+            return {"success": False, "message":"Not enough cash."}
+
+        # Deduct money
+        player.cash -= total_price
+
+        # Add stock to player's portfolio
+        player.stocks[stock.name] = owned + quantity
+
+        # Add player to stock owner list
+        if player_name not in stock.owner_list:
+            stock.owner_list.append(player_name)
+
+        # Decrease availability
+        stock.available_units -= quantity
+
+        # Increase stock price by 2%
+        old_price = stock.now_price
+        stock.now_price *= 1.02
+        # Update net worth
+        player.net_worth = player.cash + sum([e.price for e in self.estates[room_id] if e.owner_name == player_name])
+
+        # Update leaderboard
+        self.update_leaderboard(room_id)
+
+        # Broadcast
+        asyncio.create_task(self.manager.broadcast(room_id, {
+            "type": "stock_purchased",
+            "message": f"{player_name} bought {quantity} of {stock.name} at ${round(old_price, 2)} each.",
+            "stock":  stock.dict(),
+            "player": player_name
+        }))
+
+        # Update portfolio
+        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.dict()
+        }))
+
+        return {"success": True, "message": f"Successfully bought {quantity} of {stock.name}."}
+            
     
     # ########################################
     #           QUIZ
