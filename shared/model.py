@@ -52,12 +52,12 @@ class JailStatus(BaseModel):
 
 # Action Manage
 class SavingRecord(BaseModel):
-    name: str
+    name: Optional[str] = None
+    start_round: Optional[int] = None
     owner: str
     amount: float
-    start_round: int
     end_round: int
-    isSuccess: bool
+    isSuccess: bool = False
 
 class EventRecord(BaseModel):
     name: str
