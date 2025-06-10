@@ -14,6 +14,7 @@ from server.request.join_room import JoinRoomRequest
 from server.request.offer import OfferRequest
 from server.request.roll_dice import RollDiceRequest
 from server.request.end_game import EndGameRequest
+from server.request.saving_deposit import SavingDepositRequest
 from server.request.start_game import StartGameRequest
 
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
@@ -94,31 +95,7 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
             elif action == "notify":
                 target = data.get("target")
                 await manager.send_to_player(room_id, target, data)
-                
-            elif action == "saving_deposit":
-                room_id = data["room_id"]
-                player_name = data["player_name"]
-                amount = float(data["amount"])
-                result = state.process_saving_deposit(room_id, player_name, amount)
-                await manager.send_json({
-                    "type": "saving_deposit_result",
-                    "success": result["success"],
-                    "message": result["message"],
-                    "portfolio": result.get("portfolio", {})
-                })
-
-            elif action == "saving_withdraw":
-                room_id = data["room_id"]
-                player_name = data["player_name"]
-                result = state.withdraw_saving(room_id, player_name)
-                await manager.send_json({
-                    "type": "saving_withdraw_result",
-                    "success": result["success"],
-                    "message": result["message"],
-                    "amount": result.get("amount", 0),
-                    "interest": result.get("interest", 0),
-                    "portfolio": result.get("portfolio", {})
-                })
+                    
             elif action == "estate_offer":
                 buyer = data["buyer"]
                 estate = data["estate"]
@@ -390,10 +367,10 @@ async def deposit_saving(
 
 
 @app.post("/api/saving/deposit")
-async def deposit_saving(room_id: str, player_name: str, amount: float):
-    result = state.process_saving_deposit(room_id, player_name, amount)
+async def deposit_saving(request: SavingDepositRequest):
+    result = state.process_saving_deposit(request.room_id, request.player_name, request.amount)
     if result["success"]:
-        await state.manager.send_to_player(room_id, player_name, {
+        await state.manager.send_to_player(request.room_id, request.player_name, {
             "type": "portfolio_update",
             "portfolio": result["portfolio"]
         })
@@ -406,10 +383,6 @@ async def api_list_stock(data: dict):
 @app.post("/api/stock/buy_from_player")
 async def api_buy_stock_from_player(data: dict):
     return await state.buy_stock_from_player(data["room_id"], data["buyer"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
-
-@app.post("/api/stock/list_for_sale")
-def api_list_stock(data: dict):
-    return state.list_stock_for_sale(data["room_id"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
 
 @app.post("/api/stock/buy_from_player")
 def api_buy_stock_from_player(data: dict):
@@ -439,3 +412,84 @@ async def api_list_estate(data: dict):
     return await state.list_estate_for_sale(
         data["room_id"], data["seller"], data["estate"], data["price"]
     )
+
+
+@app.post("/api/saving/deposit")
+async def api_deposit_saving(request: Request):
+    body = await request.json()
+    room_id = body["room_id"]
+    player_name = body["player_name"]
+    amount = float(body["amount"])
+    
+    # Kiểm tra phòng và người chơi
+    if room_id not in state.players or player_name not in state.players[room_id]:
+        raise HTTPException(status_code=404, detail="Room or player not found.")
+    
+    # Xử lý gửi tiết kiệm
+    result = state.process_saving_deposit(room_id, player_name, amount)
+    
+    if result["success"]:
+        # Cập nhật net worth và leaderboard
+        player = state.players[room_id][player_name]
+        player.net_worth = state.calculate_net_worth(room_id, player_name)
+        state.update_leaderboard(room_id)
+        
+        # Gửi cập nhật portfolio cho người chơi
+        await manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.model_dump()
+        })
+        
+        # Broadcast notification
+        await manager.broadcast(room_id, {
+            "type": "saving_deposit_success",
+            "message": f"{player_name} deposited ${amount} to savings",
+            "player": player_name,
+            "amount": amount
+        })
+        
+        # Broadcast leaderboard update
+        await manager.broadcast(room_id, {
+            "type": "leaderboard_update",
+            "leaderboard": state.managers[room_id].leader_board
+        })
+        
+        return {"success": True, "message": result["message"], "portfolio": player.model_dump()}
+    else:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+@app.post("/api/saving/withdraw")
+async def api_withdraw_saving(request: Request):
+    body = await request.json()
+    room_id = body["room_id"]
+    player_name = body["player_name"]
+    
+    result = state.withdraw_saving(room_id, player_name)
+    
+    if result["success"]:
+        player = state.players[room_id][player_name]
+        
+        # Gửi cập nhật portfolio
+        await manager.send_to_player(room_id, player_name, {
+            "type": "portfolio_update",
+            "portfolio": player.model_dump()
+        })
+        
+        # Broadcast notification
+        await manager.broadcast(room_id, {
+            "type": "saving_withdraw_success",
+            "message": result["message"],
+            "player": player_name,
+            "amount": result["amount"],
+            "interest": result["interest"]
+        })
+        
+        # Broadcast leaderboard
+        await manager.broadcast(room_id, {
+            "type": "leaderboard_update",
+            "leaderboard": state.managers[room_id].leader_board
+        })
+        
+        return result
+    else:
+        raise HTTPException(status_code=400, detail=result["message"])

@@ -47,6 +47,8 @@ leaderboard_box = pygame.Rect(740, 80, 450, 235)
 portfolio_box = pygame.Rect(740, 335, 450, 285)
 action_bar = pygame.Rect(740, 620, 450, 150)
 
+game_end_popup = None
+final_results = None
 
 # ws variable
 ws_joined_players = []
@@ -264,26 +266,43 @@ async def listen_ws(room_id, player_name):
                     print("💸 Rent Transaction received:", raw_notification)
         
                 elif message["type"] == "saving_prompt":
+                    global saving_popup, saving_input_text
                     max_amount = message["max_amount"]
-                    saving_popup, saving_input_text
                     saving_popup = {
                         "message": message["message"],
                         "max_amount": max_amount,
-                        "room_id": message["room_id"],
-                        "player_name": message["player_name"]
+                        "room_id": message["room_id"],  # ✅ Use from message
+                        "player_name": message["player_name"]  # ✅ Use from message
                     }
                     saving_input_text = ""
                     
-                elif message["type"] == "saving_matured":
-                    print("💰 Your saving is matured and can be withdrawn.")
+                # elif message["type"] == "saving_matured":
+                #     saving_popup
+                #     add_notification(message["message"])
+                #     saving_popup = {
+                #         "message": "Your saving is matured. Withdraw now?",
+                #         "max_amount": 0,
+                #         "room_id": room_id,
+                #         "player_name": player_name,
+                #         "withdraw": True
+                #     }
+                    
+                elif message["type"] == "saving_deposit_result":
+                    saving_popup, saving_input_text
+                    add_notification(message["message"])
+                    if message["success"] and "portfolio" in message:
+                        ws_portfolio = message["portfolio"]
+                        print(f"✅ Portfolio updated after saving: {ws_portfolio}")  # Debug lo
+                    saving_popup = None
+                    saving_input_text = ""
+                    
+                elif message["type"] == "saving_withdraw_result":
                     saving_popup
-                    saving_popup = {
-                        "message": "Your saving is matured. Withdraw now?",
-                        "max_amount": 0,  # unused
-                        "room_id": room_id,
-                        "player_name": player_name,
-                        "withdraw": True
-                    }
+                    add_notification(message["message"])
+                    if message["success"] and "portfolio" in message:
+                        ws_portfolio = message["portfolio"]
+                        print("📦 Portfolio updated:", ws_portfolio)  # ✅ Debug log
+                    saving_popup = None
                 
                 elif message["type"] == "stock_for_sale":
                     msg = f"{message['seller']} is selling {message['quantity']} shares of {message['stock']} at ${message['price_per_unit']} each"
@@ -323,6 +342,43 @@ async def listen_ws(room_id, player_name):
                     if message["seller"] != player_name:
                         threading.Thread(target=show_buy_stock_from_player_popup, args=(
                             room_id, player_name, message["stock"], message["seller"], message["quantity"], message["price_per_unit"])).start()
+                        
+                elif message["type"] == "saving_deposit_success":
+                    notification = message["message"]
+                    add_notification(notification)
+                    
+                elif message["type"] == "saving_withdraw_success":
+                    notification = message["message"]
+                    add_notification(notification)         
+                elif message["type"] == "game_ended":
+                    # 🎉 Handle game end notification
+                    global game_end_popup, final_results
+                    game_end_popup = {
+                        "message": message["message"],
+                        "winner": message["winner"],
+                        "total_rounds": message["total_rounds"],
+                        "show_details": False  # Toggle for detailed view
+                    }
+                    final_results = message["final_results"]
+                    
+                    # Add notification to feed
+                    raw_notification = f"🎉 {message['message']} Winner: {message['winner']}"
+                    add_notification(raw_notification)
+                    
+                    print(f"🏆 Game ended! Winner: {message['winner']}")
+
+                elif message["type"] == "final_portfolio":
+                    # Update final portfolio data
+                    ws_portfolio = message["portfolio"]
+                    player_rank = message["rank"]
+                    
+                    # Update game end popup with rank info
+                    if game_end_popup:
+                        game_end_popup["player_rank"] = player_rank
+                    
+                    add_notification(f"Your final rank: #{player_rank}")
+
+      
                                                     
                 # Update host determination logic
                 is_host_runtime = determine_host(player_name, ws_joined_players)
@@ -434,7 +490,7 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
         end_index = len(items)
         y_offset = rect.y + 70
         for i, item in enumerate(items[start_index:end_index]):
-            wrapped_lines = textwrap.wrap(item, width=50)
+            wrapped_lines = textwrap.wrap(item, width=45)
             for line in wrapped_lines:
                 surface.blit(font.render(line, True, BLACK), (rect.x + 20, y_offset))
                 y_offset += 20
@@ -461,6 +517,14 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
 
                 if isinstance(val, (int, float)) and key not in ["current_position", "round_played"]:
                     lines.append(fmt_money(key, val))
+                elif key == "saving" and isinstance(val, (int, float)):
+                    lines.append(fmt_money(key, val))
+                    # Also show saving records if available
+                    saving_records = items.get("saving_records", [])
+                    if saving_records:
+                        lines.append("Active Savings:")
+                        for record in saving_records:
+                            lines.append(f" - ${record.get('amount', 0):.2f} (Round {record.get('maturity_round', 0)})")
 
                 elif key == "current_position":
                     tile_index = int(val)
@@ -844,16 +908,7 @@ async def send_sell_request(room_id, player_name):
 # =====================================
 # CONFIRM DEPOSITE                   ||
 # =====================================
-async def send_ws_saving_deposit(room_id, player_name, amount):
-    uri = f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}"
-    async with websockets.connect(uri) as ws:
-        await ws.send(json.dumps({
-            "action": "saving_deposit",
-            "room_id": room_id,
-            "player_name": player_name,
-            "amount": amount
-        }))
-                
+
 def confirm_saving_deposit():
     global saving_popup, saving_input_text
     try:
@@ -914,6 +969,66 @@ async def send_quiz_answer(room_id, player_name, question_id, answer_index):
                 print(data.get("message", "Quiz answer submitted."))
             else:
                 print(f"❌ Failed to submit quiz answer: {response.status}")
+
+
+# =====================================
+#  SEND SAVING DEPOSIT               ||
+# =====================================
+
+def confirm_saving_deposit():
+    global saving_popup, saving_input_text
+    try:
+        amount = float(saving_input_text)
+        max_amount = saving_popup["max_amount"]
+        room_id = saving_popup["room_id"]
+        player_name = saving_popup["player_name"]
+
+        if 0 < amount <= max_amount:
+            # Gọi API thay vì WebSocket
+            payload = {
+                "room_id": room_id,
+                "player_name": player_name,
+                "amount": amount
+            }
+            response = requests.post(
+                f"http://{SERVER_HOST}:{SERVER_PORT}/api/saving/deposit",
+                json=payload  
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Saving deposit successful: {data['message']}")
+                # Portfolio sẽ được cập nhật qua WebSocket message
+            else:
+                print(f"❌ Saving deposit failed: {response.text}")
+        else:
+            print("Invalid saving amount.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+    saving_popup = None
+    saving_input_text = ""
+
+def handle_saving_withdraw():
+    global saving_popup
+    room_id = saving_popup["room_id"]
+    player_name = saving_popup["player_name"]
+    
+    payload = {
+        "room_id": room_id,
+        "player_name": player_name
+    }
+    
+    try:
+        response = requests.post(f"http://{SERVER_HOST}:{SERVER_PORT}/api/saving/withdraw", json=payload)
+        if response.status_code == 200:
+            print("✅ Withdraw successful")
+        else:
+            print(f"❌ Withdraw failed: {response.text}")
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    saving_popup = None
 
 # =====================================
 #  SHOW BUY POP UP                   ||
@@ -981,15 +1096,13 @@ def show_stock_purchase_popup(room_id, player_name):
 # ===================================
 #  DRAW Saving POPUP                ||
 # ===================================  
-async def send_ws_saving_withdraw(room_id, player_name):
-    uri = f"ws://{SERVER_HOST}:8000/ws/{room_id}/{player_name}"
-    async with websockets.connect(uri) as ws:
-        await ws.send(json.dumps({
-            "action": "saving_withdraw",
-            "room_id": room_id,
-            "player_name": player_name
-        }))
 def draw_saving_popup(surface, popup_data):
+    global saving_popup, saving_input_text  # ✅ Add global declaration
+    
+    popup_rect = pygame.Rect(300, 200, 600, 250)
+    pygame.draw.rect(surface, WHITE, popup_rect)
+    pygame.draw.rect(surface, BLACK, popup_rect, 3)
+
     if popup_data.get("withdraw", False):
         # Show withdraw confirmation button
         button_rect = pygame.Rect(popup_rect.x + 240, popup_rect.y + 190, 120, 35)
@@ -1000,12 +1113,7 @@ def draw_saving_popup(surface, popup_data):
 
         for event in pygame.event.get():
             if event.type == pygame.MOUSEBUTTONDOWN and button_rect.collidepoint(pygame.mouse.get_pos()):
-                room_id = popup_data["room_id"]
-                player_name = popup_data["player_name"]
-                def send_withdraw():
-                    asyncio.run(send_ws_saving_withdraw(room_id, player_name))
-                threading.Thread(target=send_withdraw).start()
-                saving_popup = None
+                handle_saving_withdraw()
     else:
         popup_rect = pygame.Rect(300, 200, 600, 250)
         pygame.draw.rect(surface, WHITE, popup_rect)
@@ -1373,12 +1481,136 @@ def draw_map_with_players(surface, players):
             surface.blit(avatar, (x + corner_tile_size[0] // 4, y + corner_tile_size[1] // 4))
 
 
+            
+# =========================================
+#  DRAW GAME END POPUP
+# =========================================
+def draw_game_end_popup(surface, popup_data, final_data):
+    """
+    Draw game end popup with winner announcement and final results
+    """
+    # Main popup dimensions
+    popup_rect = pygame.Rect(200, 100, 800, 600)
+    pygame.draw.rect(surface, WHITE, popup_rect)
+    pygame.draw.rect(surface, BLACK, popup_rect, 4)
+    
+    # Title section
+    title_rect = pygame.Rect(popup_rect.x, popup_rect.y, popup_rect.width, 80)
+    pygame.draw.rect(surface, (50, 150, 50), title_rect)
+    
+    title_text = font_title.render("🎉 GAME FINISHED! 🎉", True, WHITE)
+    title_x = popup_rect.x + (popup_rect.width - title_text.get_width()) // 2
+    surface.blit(title_text, (title_x, popup_rect.y + 25))
+    
+    # Winner announcement
+    winner = popup_data["winner"]
+    winner_text = font_title.render(f"🏆 WINNER: {winner}", True, (255, 215, 0))
+    winner_x = popup_rect.x + (popup_rect.width - winner_text.get_width()) // 2
+    surface.blit(winner_text, (winner_x, popup_rect.y + 100))
+    
+    # Game stats
+    rounds_text = font.render(f"Total Rounds: {popup_data['total_rounds']}", True, BLACK)
+    surface.blit(rounds_text, (popup_rect.x + 50, popup_rect.y + 140))
+    
+    # Player's rank (if available)
+    if "player_rank" in popup_data:
+        rank_text = font.render(f"Your Rank: #{popup_data['player_rank']}", True, BLACK)
+        surface.blit(rank_text, (popup_rect.x + 50, popup_rect.y + 170))
+    
+    # Final leaderboard
+    if final_data and "leaderboard" in final_data:
+        leaderboard_title = font_title.render("Final Rankings:", True, BLACK)
+        surface.blit(leaderboard_title, (popup_rect.x + 50, popup_rect.y + 210))
+        
+        leaderboard = final_data["leaderboard"]
+        for i, player_data in enumerate(leaderboard[:6]):  # Show top 6
+            rank = i + 1
+            player_name = player_data.get("player", "Unknown")
+            net_worth = player_data.get("net_worth", 0)
+            
+            # Color coding for ranks
+            if rank == 1:
+                color = (255, 215, 0)  # Gold
+            elif rank == 2:
+                color = (192, 192, 192)  # Silver  
+            elif rank == 3:
+                color = (205, 127, 50)  # Bronze
+            else:
+                color = BLACK
+                
+            rank_line = f"{rank}. {player_name} - ${net_worth:,.2f}"
+            rank_text = font.render(rank_line, True, color)
+            surface.blit(rank_text, (popup_rect.x + 70, popup_rect.y + 250 + i * 30))
+    
+    # Buttons
+    button_width = 120
+    button_height = 40
+    button_y = popup_rect.y + popup_rect.height - 70
+    
+    # Details button
+    details_btn = pygame.Rect(popup_rect.x + 200, button_y, button_width, button_height)
+    pygame.draw.rect(surface, GRAY, details_btn)
+    pygame.draw.rect(surface, BLACK, details_btn, 2)
+    details_text = font.render("Details", True, BLACK)
+    surface.blit(details_text, details_text.get_rect(center=details_btn.center))
+    
+    # Close button
+    close_btn = pygame.Rect(popup_rect.x + 480, button_y, button_width, button_height)
+    pygame.draw.rect(surface, (200, 100, 100), close_btn)
+    pygame.draw.rect(surface, BLACK, close_btn, 2)
+    close_text = font.render("Close", True, WHITE)
+    surface.blit(close_text, close_text.get_rect(center=close_btn.center))
+    
+    # Handle button clicks
+    mouse_pos = pygame.mouse.get_pos()
+    for event in pygame.event.get():
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if details_btn.collidepoint(mouse_pos):
+                popup_data["show_details"] = not popup_data.get("show_details", False)
+            elif close_btn.collidepoint(mouse_pos):
+                global game_end_popup
+                game_end_popup = None
+                
+    # Show detailed stats if toggled
+    if popup_data.get("show_details", False):
+        draw_detailed_results(surface, popup_rect, final_data)
+
+def draw_detailed_results(surface, main_rect, final_data):
+    """
+    Draw detailed breakdown of final results
+    """
+    if not final_data or "summary" not in final_data:
+        return
+        
+    detail_rect = pygame.Rect(main_rect.x + 50, main_rect.y + 400, main_rect.width - 100, 150)
+    pygame.draw.rect(surface, LIGHT_GRAY, detail_rect)
+    pygame.draw.rect(surface, BLACK, detail_rect, 2)
+    
+    detail_title = font.render("Detailed Breakdown:", True, BLACK)
+    surface.blit(detail_title, (detail_rect.x + 10, detail_rect.y + 10))
+    
+    summary = final_data["summary"]
+    for i, player_summary in enumerate(summary[:3]):  # Show top 3 details
+        player_name = player_summary.get("player", "Unknown")
+        cash = player_summary.get("cash", 0)
+        saving = player_summary.get("saving", 0)
+        stock_value = player_summary.get("stock_value", 0)
+        estate_count = player_summary.get("estate_count", 0)
+        
+        detail_line = f"{player_name}: Cash ${cash:.0f} | Saving ${saving:.0f} | Stocks ${stock_value:.0f} | {estate_count} estates"
+        detail_text = font.render(detail_line, True, BLACK)
+        surface.blit(detail_text, (detail_rect.x + 10, detail_rect.y + 40 + i * 25))
+
+
+
+
 # =========================================
 #  RUN UI
 # =========================================
 def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=None):
     global current_player
     global current_room
+    global scroll_offset  
     if not pygame.get_init():
         pygame.init()
     if not pygame.display.get_init():
@@ -1480,7 +1712,8 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
         
         draw_action_buttons(screen, room_id, player_name, is_host_runtime, game_started, current_player, events)
 
-
+        if game_end_popup:
+            draw_game_end_popup(screen, game_end_popup, final_results)
         if quiz_popup:
             draw_quiz_popup(screen, quiz_popup, room_id, player_name)
         if shock_popup:

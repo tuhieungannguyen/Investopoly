@@ -73,6 +73,7 @@ class GameState:
     # Hàm để tung xúc xắc, trả về số ngẫu nhiên từ 1 đến 6
     def roll_dice(self) -> int:
         return randint(1, 6)   
+ 
     
     # Hàm để di chuyển người chơi đến ô mới dựa trên số xúc xắc
     async def move_player(self, room_id: str, player_name: str, steps: int) -> dict:
@@ -195,6 +196,8 @@ class GameState:
             manager.current_round += 1
             manager.current_played = 0
             asyncio.create_task(self.distribute_stock_dividends(room_id))  
+            asyncio.create_task(self.check_and_handle_round_completion(room_id))
+
             
     def add_player_to_room(self, room_id: str, player_name: str):
         if room_id not in self.rooms:
@@ -263,6 +266,69 @@ class GameState:
         }
 
 
+    async def check_game_end_condition(self, room_id: str) -> bool:
+        """
+        Kiểm tra điều kiện kết thúc game (15 rounds) và broadcast kết quả
+        
+        :param room_id: ID của phòng
+        :return: True nếu game kết thúc, False nếu chưa
+        """
+        if room_id not in self.managers:
+            return False
+        
+        manager = self.managers[room_id]
+        
+        # Kiểm tra nếu đã đủ 15 round
+        if manager.current_round >= 15:
+            print(f"🎯 Game in room {room_id} has reached 15 rounds. Ending game...")
+            
+            # Gọi hàm end_game để tính toán kết quả cuối
+            final_results = self.end_game(room_id)
+            
+            # Broadcast thông báo kết thúc game
+            await self.manager.broadcast(room_id, {
+                "type": "game_ended",
+                "message": "🎉 Game has ended after 15 rounds!",
+                "final_results": final_results,
+                "winner": final_results["leaderboard"][0]["player"] if final_results["leaderboard"] else "No winner",
+                "total_rounds": manager.current_round
+            })
+            
+            # Gửi portfolio cuối cùng cho từng người chơi
+            for player_name, player in self.players[room_id].items():
+                await self.manager.send_to_player(room_id, player_name, {
+                    "type": "final_portfolio",
+                    "portfolio": player.model_dump(),
+                    "rank": next((i+1 for i, p in enumerate(final_results["leaderboard"]) 
+                                if p["player"] == player_name), len(final_results["leaderboard"]))
+                })
+            
+            return True
+        
+        return False
+
+    async def check_and_handle_round_completion(self, room_id: str):
+        """
+        Kiểm tra khi hoàn thành một round và xử lý logic kết thúc game
+        Gọi hàm này sau khi distribute_stock_dividends
+        """
+        manager = self.managers[room_id]
+        
+        # Log trạng thái hiện tại
+        print(f"📊 Round {manager.current_round} completed in room {room_id}")
+        
+        # Kiểm tra điều kiện kết thúc
+        game_ended = await self.check_game_end_condition(room_id)
+        
+        if not game_ended:
+            # Broadcast thông báo bắt đầu round mới
+            await self.manager.broadcast(room_id, {
+                "type": "new_round_started",
+                "message": f"🔄 Round {manager.current_round} has started!",
+                "current_round": manager.current_round,
+                "remaining_rounds": 15 - manager.current_round,
+                "current_player": manager.current_player
+            })
     # ==================================================
     # PROPERTY                                        ||  
     # ==================================================
@@ -806,6 +872,8 @@ class GameState:
             })
 
             self.stock_revenue[room_id][stock_name] = 0  # Reset
+        self.update_leaderboard(room_id)
+
 
     async def list_stock_for_sale(self, room_id: str, seller: str, stock_name: str, quantity: int, price_per_unit: float):
         player = self.players[room_id][seller]
@@ -931,43 +999,56 @@ class GameState:
         await self.manager.send_to_player(room_id, player_name, {
             "type": "saving_prompt",
             "message": "You landed on the Saving tile. How much do you want to save?",
-            "max_amount": player.cash
+            "max_amount": player.cash,
+            "room_id": room_id,
+            "player_name": player_name 
         })
         
         
     def process_saving_deposit(self, room_id: str, player_name: str, amount: float) -> dict:
-        player = self.players[room_id][player_name]
-        current_round = self.managers[room_id].current_round
-
-        if amount <= 0:
-            return {"success": False, "message": "Amount must be positive."}
-        if amount > player.cash:
-            return {"success": False, "message": "Not enough cash to save."}
-
-        # Trừ tiền và ghi lại saving record
-        player.cash -= amount
-        player.saving += amount
-
-        self.saving_records[room_id].append(
-            SavingRecord(
-                name=f"saving-{player_name}-{current_round}",
-                owner=player_name,
-                amount=amount,
-                start_round=current_round,
-                end_round=current_round + 3,
-                isSuccess=True
+        try:
+            player = self.players[room_id][player_name]
+            
+            # Kiểm tra số tiền hợp lệ
+            if amount <= 0:
+                return {"success": False, "message": "Amount must be positive"}
+            
+            if amount > player.cash:
+                return {"success": False, "message": "Insufficient cash"}
+            
+            # Thực hiện gửi tiết kiệm
+            player.cash -= amount
+            player.saving += amount  # ✅ Cộng vào saving
+            
+            # Tính lại net worth
+            player.net_worth = self.calculate_net_worth(room_id, player_name)
+            
+            # Lưu record với đủ thông tin
+            current_round = self.managers[room_id].current_round
+            self.saving_records[room_id].append(
+                SavingRecord(
+                    owner=player_name,
+                    amount=amount,
+                    round_deposit=current_round,
+                    round_withdraw=None,  # Chưa rút
+                    end_round=current_round + 3,  # ✅ Thêm end_round
+                    isSuccess=True  # ✅ Đang active
+                )
             )
-        )
+            
+            # Debug log
+            print(f"💰 {player_name} deposited ${amount}. New saving: ${player.saving}, Cash: ${player.cash}")
+            
+            return {
+                "success": True,
+                "message": f"Successfully deposited ${amount:.2f} to savings",
+                "portfolio": player.model_dump()
+            }
+            
+        except Exception as e:
+            print(f"❌ Saving deposit error: {e}")
+            return {"success": False, "message": str(e)}
 
-        # Cập nhật tài sản ròng và leaderboard
-        player.net_worth = self.calculate_net_worth(room_id, player_name)
-        self.update_leaderboard(room_id)
-
-        return {
-            "success": True,
-            "message": f"{player_name} saved ${amount} successfully.",
-            "portfolio": player.dict()
-        }
     def withdraw_saving(self, room_id: str, player_name: str) -> dict:
         player = self.players[room_id][player_name]
         current_round = self.managers[room_id].current_round
@@ -1161,3 +1242,21 @@ class GameState:
         net_worth = player.cash + stock_value + estate_value + player.saving
 
         return round(net_worth, 2)
+
+    def get_game_progress(self, room_id: str) -> dict:
+        """
+        Trả về thông tin tiến độ game hiện tại
+        """
+        if room_id not in self.managers:
+            return {"error": "Room not found"}
+        
+        manager = self.managers[room_id]
+        return {
+            "current_round": manager.current_round,
+            "max_rounds": 15,
+            "progress_percentage": (manager.current_round / 15) * 100,
+            "remaining_rounds": 15 - manager.current_round,
+            "current_player": manager.current_player,
+            "players_played_this_round": manager.current_played,
+            "total_players": len(self.rooms[room_id].roomMember)
+    }
