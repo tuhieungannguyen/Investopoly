@@ -9,8 +9,8 @@ import investopoly_main_ui
 import os  # <-- Import os module
 
 # --- Config ---
-# SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
-SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 SERVER_PORT = os.getenv('SERVER_PORT', '8000')
 SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
 WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
@@ -49,13 +49,16 @@ input_box_room = pygame.Rect(220, 120, 240, 36)
 input_box_name = pygame.Rect(220, 180, 240, 36)
 btn_create = pygame.Rect(270, 250, 150, 40)
 
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):  # Khi chạy từ PyInstaller .exe
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 # --- Draw Lobby UI ---
 def draw_lobby():
     screen.fill(WHITE)
     # Replace title text with an image
     margin = 20
-    title_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/INVESTOPOLY.png'))
-    title_image = pygame.image.load(title_image_path)
+    title_image = pygame.image.load(resource_path("shared/ui/INVESTOPOLY.png")).convert_alpha()
 
     # Tính chiều rộng mới có trừ margin 2 bên
     scaled_width = screen.get_width() - 2 * margin
