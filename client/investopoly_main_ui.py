@@ -45,7 +45,7 @@ map_area = pygame.Rect(20, 80, 850, 600)
 event_box = pygame.Rect(168, 230, 402, 400)
 leaderboard_box = pygame.Rect(740, 80, 450, 235)
 portfolio_box = pygame.Rect(740, 335, 450, 285)
-action_bar = pygame.Rect(740, 620, 335, 50)
+action_bar = pygame.Rect(740, 620, 450, 150)
 
 
 # ws variable
@@ -595,6 +595,7 @@ def draw_leaderboard_chart(surface, rect, leaderboard_data):
         # Draw name below
         name_text = font.render(player_name, True, bar_colors[idx % len(bar_colors)])
         surface.blit(name_text, (x + (bar_width - name_text.get_width()) // 2, rect.y + rect.height - 30))
+        
 # ===================================
 #  DRAW SELL ESTATE POPUP          ||
 # ===================================
@@ -1180,37 +1181,151 @@ def handle_button_click(button_label, room_id, player_name):
 # ==================================
 # DRAW ACTION BUTTON
 # ==================================
-def draw_action_buttons(surface, room_id, player_name):
-    pygame.draw.rect(surface, GRAY, action_bar)
-    pygame.draw.rect(surface, BLACK, action_bar, 2)
-    buttons = ["Roll Dice", "Buy", "Sell", "Deposit", "End Turn"]
-    button_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/button_1.png'))
-    button_image = pygame.image.load(button_image_path)
+def draw_action_buttons(surface, room_id, player_name, is_host_runtime, game_started, current_player, events):
+    """
+    Unified action buttons handler - handles all button drawing and click logic
+    """
+    # Vẽ nền action_bar
+    # pygame.draw.rect(surface, GRAY, action_bar)
+    # pygame.draw.rect(surface, BLACK, action_bar, 2)
 
-    # Scale the button image proportionally to fit the button area
-    image_width, image_height = button_image.get_size()
-    scale_factor = min(150 / image_width, 40 / image_height)
-    scaled_width = int(image_width * scale_factor)
-    scaled_height = int(image_height * scale_factor)
-    button_image = pygame.transform.scale(button_image, (scaled_width, scaled_height))
+    # Load all button images with correct proportions
+    ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui'))
+    
+    # Button proportions: roll:buy:sell:deposit:end = 145:85:80:120:430
+    # Using a base height of 40px, calculate widths proportionally
+    base_height = 65
+    button_widths = {
+        'roll': 145,
+        'buy': 85,
+        'sell': 80,
+        'deposit': 120,
+        'start': 430,
+        'end': 430
+    }
+    
+    button_images = {}
+    for key in ['roll', 'buy', 'sell', 'deposit', 'start', 'end']:
+        try:
+            image = pygame.image.load(os.path.join(ui_path, f'{key}.png'))
+            # Scale to correct proportions
+            width = button_widths[key]
+            button_images[key] = pygame.transform.scale(image, (width, base_height))
+        except pygame.error as e:
+            print(f"Warning: Could not load {key}.png - {e}")
+            # Create fallback colored rectangle if image not found
+            fallback = pygame.Surface((button_widths[key], base_height))
+            fallback.fill((100, 100, 100))
+            button_images[key] = fallback
 
-    for i, label in enumerate(buttons):
-        rect = pygame.Rect(50 + i * 200, action_bar.y + 15, 150, 40)
-        # Center the button image within the rect
-        image_x = rect.x + (rect.width - scaled_width) // 2
-        image_y = rect.y + (rect.height - scaled_height) // 2
-        surface.blit(button_image, (image_x, image_y))
-        # Center the text within the rect
-        text = font.render(label, True, WHITE)
-        surface.blit(text, text.get_rect(center=rect.center))
+    # Get mouse state once
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_clicked = any(e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 for e in events)
 
-        # Check for button click
-        mouse_pos = pygame.mouse.get_pos()
-        mouse_click = pygame.mouse.get_pressed()
-        if rect.collidepoint(mouse_pos) and mouse_click[0]:
-            handle_button_click(label, room_id, player_name)
+    # Button definitions with conditions
+    buttons = []
+    
+    # Row 1: Game action buttons (only show if game started)
+    if game_started:
+        # Calculate positions for row 1 buttons with their actual widths
+        current_x = action_bar.x + 10
+        row1_buttons = [
+            {'label': 'Roll Dice', 'image_key': 'roll', 'action': 'roll_dice', 'player_only': True, 'width': 145},
+            {'label': 'Buy', 'image_key': 'buy', 'action': 'buy', 'player_only': False, 'width': 85},
+            {'label': 'Sell', 'image_key': 'sell', 'action': 'sell', 'player_only': False, 'width': 80},
+            {'label': 'Deposit', 'image_key': 'deposit', 'action': 'deposit', 'player_only': False, 'width': 120}
+        ]
+        
+        for btn_config in row1_buttons:
+            # Special handling for Roll Dice - only show for current player
+            if btn_config['player_only'] and player_name != current_player:
+                continue
+                
+            btn_rect = pygame.Rect(current_x, action_bar.y + 5, btn_config['width'], base_height)
+            
+            buttons.append({
+                'rect': btn_rect,
+                'label': btn_config['label'],
+                'image': button_images[btn_config['image_key']],
+                'action': btn_config['action'],
+                'enabled': True
+            })
+            
+            # Move to next position with small spacing
+            current_x += btn_config['width'] + 5
 
+    # Row 2: Main action button (END TURN width = 430)
+    main_rect = pygame.Rect(action_bar.x + 10, action_bar.y + 75, 430, base_height)
+    
+    if not game_started and is_host_runtime:
+        # START button for host before game starts
+        buttons.append({
+            'rect': main_rect,
+            'label': "START",
+            'image': button_images['start'],
+            'action': 'start_game',
+            'enabled': True
+        })
+    elif game_started:
+        # END TURN button during game
+        buttons.append({
+            'rect': main_rect,
+            'label': "END TURN",
+            'image': button_images['end'],
+            'action': 'end_turn',
+            'enabled': True
+        })
 
+    # Draw and handle all buttons
+    for button in buttons:
+        rect = button['rect']
+        image = button['image']
+        action = button['action']
+        enabled = button['enabled']
+        
+        # Draw button image (already contains text)
+        surface.blit(image, rect.topleft)
+        
+        # Handle click
+        if enabled and rect.collidepoint(mouse_pos) and mouse_clicked:
+            handle_button_action(action, room_id, player_name)
+            
+def handle_button_action(action, room_id, player_name):
+    """
+    Centralized button action handler
+    """
+    try:
+        if action == 'start_game':
+            response = requests.post(f"http://{SERVER_HOST}:8000/start", json={"room_id": room_id})
+            if response.status_code == 200:
+                print("✅ Game started successfully")
+            else:
+                print("❌ Failed to start game:", response.text)
+                
+        elif action == 'roll_dice':
+            response = requests.post(f"http://{SERVER_HOST}:8000/roll", 
+                                   json={"room_id": room_id, "player_name": player_name})
+            if response.status_code == 200:
+                print("✅ Dice rolled successfully")
+            else:
+                print("❌ Error rolling dice:", response.json())
+                
+        elif action == 'end_turn':
+            asyncio.run(send_end_turn_request(room_id, player_name))
+            
+        elif action == 'buy':
+            handle_button_click('Buy', room_id, player_name)
+            
+        elif action == 'sell':
+            handle_button_click('Sell', room_id, player_name)
+            
+        elif action == 'deposit':
+            handle_button_click('Deposit', room_id, player_name)
+            
+    except Exception as e:
+        print(f"❌ Error handling {action}: {e}")
+            
+            
 # =========================================
 #  DRAW MAP WITH PLAYERS
 # =========================================
@@ -1275,28 +1390,38 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
 
     threading.Thread(target=lambda: asyncio.run(listen_ws(room_id, player_name)), daemon=True).start()
     running = True
-    start_btn = pygame.Rect(950, 720, 120, 50)  # Adjusted position for the start button
-    is_host_runtime = determine_host(player_name, joined_players)
+    # start_btn = pygame.Rect(950, 720, 120, 50)  # Adjusted position for the start button
+    # is_host_runtime = determine_host(player_name, joined_players)
     while running:
         screen.fill(WHITE)
         events = pygame.event.get()
 
+        # for e in events:
+        #     if e.type == pygame.QUIT:
+        #         running = False
+        #     elif e.type == pygame.MOUSEBUTTONDOWN:
+        #         if is_host_runtime and start_btn and start_btn.collidepoint(e.pos):
+        #             try:
+        #                 print("Host clicked the START button.")  # Debug log
+        #                 response = requests.post(f"http://{SERVER_HOST}:8000/start", json={"room_id": room_id})
+        #                 if response.status_code == 200:
+        #                     print("Game started successfully.")
+        #                     start_btn = None  # Remove the START button after the game starts
+        #                 else:
+        #                     print(f"[Error] Backend response: {response.text}")
+        #             except Exception as err:
+        #                 print(f"[Error] Failed to start game: {err}")
+
+        #     elif e.type == pygame.MOUSEBUTTONDOWN:
+        #         if e.button == 4:  # Scroll up
+        #             scroll_offset = max(0, scroll_offset - 1)
+        #         elif e.button == 5:  # Scroll down
+        #             max_items = (event_box.height - 40) // 25
+        #             scroll_offset = min(len(ws_notifications) - max_items, scroll_offset + 1)
+
         for e in events:
             if e.type == pygame.QUIT:
                 running = False
-            elif e.type == pygame.MOUSEBUTTONDOWN:
-                if is_host_runtime and start_btn and start_btn.collidepoint(e.pos):
-                    try:
-                        print("Host clicked the START button.")  # Debug log
-                        response = requests.post(f"http://{SERVER_HOST}:8000/start", json={"room_id": room_id})
-                        if response.status_code == 200:
-                            print("Game started successfully.")
-                            start_btn = None  # Remove the START button after the game starts
-                        else:
-                            print(f"[Error] Backend response: {response.text}")
-                    except Exception as err:
-                        print(f"[Error] Failed to start game: {err}")
-
             elif e.type == pygame.MOUSEBUTTONDOWN:
                 if e.button == 4:  # Scroll up
                     scroll_offset = max(0, scroll_offset - 1)
@@ -1307,51 +1432,54 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
         # Define current_players before using it
         current_players = ws_joined_players if ws_joined_players else joined_players
 
-        # Debug log for player_name and current_players
-        # print(f"Player name: {player_name}")
-        # print(f"Current players: {current_players}")
-
         # Update host determination logic
         if current_players and isinstance(current_players[0], dict):
             is_host_runtime = (player_name == current_players[0].get('player_name'))
         else:
             is_host_runtime = (player_name == current_players[0]) if current_players else False
+            
+            
+        # Define current_players before using it
+        # current_players = ws_joined_players if ws_joined_players else joined_players
+
+        # Debug log for player_name and current_players
+        # print(f"Player name: {player_name}")
+        # print(f"Current players: {current_players}")
+
+        # # Update host determination logic
+        # if current_players and isinstance(current_players[0], dict):
+        #     is_host_runtime = (player_name == current_players[0].get('player_name'))
+        # else:
+        #     is_host_runtime = (player_name == current_players[0]) if current_players else False
 
         # print(f"Is host runtime: {is_host_runtime}")
+        
+        # Vẽ UI
+        game_started = current_round is not None
 
         # Vẽ UI
+        # draw_top_bar(screen, room_id, player_name, current_round)
+        # draw_map_with_players(screen, ws_joined_players or joined_players)
+        # draw_box(event_box, "Notification", screen, ws_notifications)  # Display notifications
+        # draw_leaderboard_chart(screen, leaderboard_box, ws_leaderboard or leaderboard)
+        # draw_box(portfolio_box, "Portfolio", screen, ws_portfolio or portfolio, is_dict=True)
+        # draw_action_buttons(screen, room_id, player_name, is_host_runtime, current_round is not None)
         draw_top_bar(screen, room_id, player_name, current_round)
         draw_map_with_players(screen, ws_joined_players or joined_players)
-        draw_box(event_box, "Notification", screen, ws_notifications)  # Display notifications
+        draw_box(event_box, "Notification", screen, ws_notifications)
         draw_leaderboard_chart(screen, leaderboard_box, ws_leaderboard or leaderboard)
         draw_box(portfolio_box, "Portfolio", screen, ws_portfolio or portfolio, is_dict=True)
-        draw_action_buttons(screen, room_id, player_name)
 
         # Nút start chỉ nếu là host
-        if is_host_runtime and start_btn:
-            # print("Displaying START button for host.")  # Debug log
-            pygame.draw.rect(screen, GREEN, start_btn)
-            pygame.draw.rect(screen, BLACK, start_btn, 2)
-            text = font.render("START", True, WHITE)
-            screen.blit(text, text.get_rect(center=start_btn.center))
+        # if is_host_runtime and start_btn:
+        #     # print("Displaying START button for host.")  # Debug log
+        #     pygame.draw.rect(screen, GREEN, start_btn)
+        #     pygame.draw.rect(screen, BLACK, start_btn, 2)
+        #     text = font.render("START", True, WHITE)
+        #     screen.blit(text, text.get_rect(center=start_btn.center))
+        
+        draw_action_buttons(screen, room_id, player_name, is_host_runtime, game_started, current_player, events)
 
-        # Display "Roll Dice" button if it's the current player's turn
-        if player_name == current_player:
-            roll_button = pygame.Rect(50, action_bar.y + 15, 150, 40)
-            pygame.draw.rect(screen, GREEN, roll_button)
-            pygame.draw.rect(screen, BLACK, roll_button, 2)
-            text = font.render("Roll Dice", True, WHITE)
-            screen.blit(text, text.get_rect(center=roll_button.center))
-
-            # Handle click event for "Roll Dice" button
-            for e in events:
-                if e.type == pygame.MOUSEBUTTONDOWN and roll_button.collidepoint(e.pos):
-                    try:
-                        response = requests.post(f"http://{SERVER_HOST}:8000/roll", json={"room_id": room_id, "player_name": player_name})
-                        if response.status_code != 200:
-                            print("Error rolling dice:", response.json())
-                    except Exception as err:
-                        print(f"Error sending roll request: {err}")
 
         if quiz_popup:
             draw_quiz_popup(screen, quiz_popup, room_id, player_name)
