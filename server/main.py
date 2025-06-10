@@ -493,3 +493,46 @@ async def api_withdraw_saving(request: Request):
         return result
     else:
         raise HTTPException(status_code=400, detail=result["message"])
+@app.post("/admin/reset_all_rooms")
+async def reset_all_rooms():
+    state.rooms.clear()
+    state.players.clear()
+    state.managers.clear()
+
+    # Broadcast tới tất cả WebSocket (nếu cần)
+    await manager.broadcast_to_all({
+        "type": "server_reset",
+        "message": "All rooms have been reset."
+    })
+
+    return {"message": "All rooms have been reset."}
+@app.post("/admin/reset_room/{room_id}")
+async def reset_specific_room(room_id: str):
+    if room_id not in state.rooms:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    del state.rooms[room_id]
+    del state.players[room_id]
+    del state.managers[room_id]
+
+    await manager.broadcast(room_id, {
+        "type": "room_reset",
+        "message": f"Room {room_id} has been reset."
+    })
+
+    return {"message": f"Room {room_id} has been reset."}
+
+
+@app.get("/admin/list_rooms")
+async def list_rooms():
+    rooms_info = []
+
+    for room_id, room in state.rooms.items():
+        players = list(state.players.get(room_id, {}).keys())
+        rooms_info.append({
+            "room_id": room_id,
+            "players": players,
+            "player_count": len(players),
+        })
+
+    return {"rooms": rooms_info}

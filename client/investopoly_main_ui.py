@@ -10,15 +10,20 @@ import sys
 import textwrap
 import aiohttp
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared')))
-from constants import TILE_MAP
+from shared.constants import TILE_MAP
+
+
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):  # Khi chạy từ PyInstaller .exe
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 pygame.init()
 screen = pygame.display.set_mode((1200, 800))
 pygame.display.set_caption("Investopoly - Main Game UI")
 clock = pygame.time.Clock()
-font_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/CutePixel.ttf'))
-font = pygame.font.Font(font_path, 20)
-font_title = pygame.font.Font(font_path, 26)
+font = pygame.font.Font(resource_path("shared/CutePixel.ttf"), 20)
+font_title = pygame.font.Font(resource_path("shared/CutePixel.ttf"), 26)
 
 # Màu
 WHITE = (255, 255, 255)
@@ -31,8 +36,8 @@ GREEN = (34, 139, 34)
 
 
 # --- Config ---
-# SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
-SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 SERVER_PORT = os.getenv('SERVER_PORT', '8000')
 SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
 WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
@@ -73,17 +78,16 @@ estate_prices = {}
 ########################################################################
 ## IMAGE
 ########################################################################
-topbar_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/bar.png'))
-topbar_image = pygame.image.load(topbar_image_path).convert_alpha()
+
+topbar_image = pygame.image.load(resource_path("shared/ui/bar.png")).convert_alpha()
 topbar_image = pygame.transform.scale(topbar_image, (1160, 50)) 
 
-profile_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/profile.png'))
-profile_image = pygame.image.load(profile_image_path).convert_alpha()
+
+profile_image = pygame.image.load(resource_path("shared/ui/profile.png")).convert_alpha()
 profile_image = pygame.transform.scale(profile_image, (portfolio_box.width, portfolio_box.height))
 
 
-notification_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/noti_1.png'))
-noti_image = pygame.image.load(notification_image_path).convert_alpha()
+noti_image = pygame.image.load(resource_path("shared/ui/noti_1.png")).convert_alpha()
 noti_image = pygame.transform.scale(noti_image, (event_box.width, event_box.height))
 # ====================================
 # ADD NOTIFICATION                  ||
@@ -583,8 +587,7 @@ def draw_leaderboard_chart(surface, rect, leaderboard_data):
     # pygame.draw.rect(surface, BLACK, rect, 2)
 
     # Load avatars
-    shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
-    avatars = [pygame.image.load(os.path.join(shared_path, f"{i+1}.png")).convert_alpha()
+    avatars = [pygame.image.load(os.path.join(resource_path("shared/avt"), f"{i+1}.png")).convert_alpha()
                for i in range(len(leaderboard_data))]
 
     # Color config (the order must match the player index)
@@ -865,8 +868,7 @@ def draw_top_bar(surface, room, player, round):
         # Tìm index của player
         player_index = next((i for i, p in enumerate(ws_joined_players) if p.get("player_name") == player), None)
         if player_index is not None:
-            shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
-            avatar_path = os.path.join(shared_path, f"{player_index + 1}.png")
+            avatar_path = os.path.join(resource_path("shared/avt"), f"{player_index + 1}.png")
             if os.path.exists(avatar_path):
                 avatar_image = pygame.image.load(avatar_path).convert_alpha()
                 avatar_image = pygame.transform.scale(avatar_image, (30, 30))  # Kích thước nhỏ gọn
@@ -1298,7 +1300,7 @@ def draw_action_buttons(surface, room_id, player_name, is_host_runtime, game_sta
     # pygame.draw.rect(surface, BLACK, action_bar, 2)
 
     # Load all button images with correct proportions
-    ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui'))
+    # ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui'))
     
     # Button proportions: roll:buy:sell:deposit:end = 145:85:80:120:430
     # Using a base height of 40px, calculate widths proportionally
@@ -1315,7 +1317,7 @@ def draw_action_buttons(surface, room_id, player_name, is_host_runtime, game_sta
     button_images = {}
     for key in ['roll', 'buy', 'sell', 'deposit', 'start', 'end']:
         try:
-            image = pygame.image.load(os.path.join(ui_path, f'{key}.png'))
+            image = pygame.image.load(os.path.join(resource_path("shared/ui"), f'{key}.png'))
             # Scale to correct proportions
             width = button_widths[key]
             button_images[key] = pygame.transform.scale(image, (width, base_height))
@@ -1439,15 +1441,13 @@ def handle_button_action(action, room_id, player_name):
 # =========================================
 def draw_map_with_players(surface, players):
     # Load the board image as the map
-    board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board_new.png'))
-    board_image = pygame.image.load(board_image_path)
+    board_image = pygame.image.load(resource_path("shared/ui/board_new.png")).convert_alpha()
     board_image = pygame.transform.scale(board_image, (700, 700))
     surface.blit(board_image, (map_area.x, map_area.y))
 
     # Load avatars using absolute path
-    shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
     avatars = [
-        pygame.image.load(os.path.join(shared_path, f"{i}.png")) for i in range(1, len(players) + 1)
+        pygame.image.load(os.path.join(resource_path("shared/avt"), f"{i}.png")) for i in range(1, len(players) + 1)
     ]
 
     # Define tile dimensions based on the scaled board
