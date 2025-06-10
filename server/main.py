@@ -5,11 +5,13 @@ from typing import Dict, List
 
 from fastapi.responses import JSONResponse
 
+from server.request.accept_offer_request import AcceptOfferRequest
 from server.request.buy_estate import BuyEstateRequest
 from server.request.buy_stock import BuyStockRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.create_room import CreateRoomRequest
 from server.request.join_room import JoinRoomRequest
+from server.request.offer import OfferRequest
 from server.request.roll_dice import RollDiceRequest
 from server.request.end_game import EndGameRequest
 from server.request.start_game import StartGameRequest
@@ -96,30 +98,9 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
             elif action == "saving_deposit":
                 room_id = data["room_id"]
                 player_name = data["player_name"]
-                amount = data["amount"]
-
-                result = state.process_saving_deposit(room_id, player_name, amount)
-
-                # Gửi cập nhật đến player
-                await manager.send_to_player(room_id, player_name, {
-                    "type": "saving_result",
-                    "success": result["success"],
-                    "message": result["message"],
-                    "portfolio": result.get("portfolio", {})
-                })
-
-                # Gửi leaderboard update nếu thành công
-                if result["success"]:
-                    await manager.broadcast(room_id, {
-                        "type": "leaderboard_update",
-                        "leaderboard": state.managers[room_id].leader_board
-                    })
-            elif action == "saving_deposit":
-                room_id = data["room_id"]
-                player_name = data["player_name"]
                 amount = float(data["amount"])
                 result = state.process_saving_deposit(room_id, player_name, amount)
-                await connection.send_json({
+                await manager.send_json({
                     "type": "saving_deposit_result",
                     "success": result["success"],
                     "message": result["message"],
@@ -130,7 +111,7 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
                 room_id = data["room_id"]
                 player_name = data["player_name"]
                 result = state.withdraw_saving(room_id, player_name)
-                await connection.send_json({
+                await manager.send_json({
                     "type": "saving_withdraw_result",
                     "success": result["success"],
                     "message": result["message"],
@@ -138,7 +119,12 @@ async def game_room(websocket: WebSocket, room_id: str, player_name: str):
                     "interest": result.get("interest", 0),
                     "portfolio": result.get("portfolio", {})
                 })
-
+            elif action == "estate_offer":
+                buyer = data["buyer"]
+                estate = data["estate"]
+                price = data["price"]
+                room_id = data["room_id"]
+                result = state.receive_estate_offer(room_id, buyer, estate, price)
             else:
                 await manager.broadcast(room_id, {"from": player_name, "data": data})
            
@@ -412,3 +398,44 @@ async def deposit_saving(room_id: str, player_name: str, amount: float):
             "portfolio": result["portfolio"]
         })
     return result
+
+@app.post("/api/stock/list_for_sale")
+async def api_list_stock(data: dict):
+    return await state.list_stock_for_sale(data["room_id"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
+
+@app.post("/api/stock/buy_from_player")
+async def api_buy_stock_from_player(data: dict):
+    return await state.buy_stock_from_player(data["room_id"], data["buyer"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
+
+@app.post("/api/stock/list_for_sale")
+def api_list_stock(data: dict):
+    return state.list_stock_for_sale(data["room_id"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
+
+@app.post("/api/stock/buy_from_player")
+def api_buy_stock_from_player(data: dict):
+    return state.buy_stock_from_player(data["room_id"], data["buyer"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
+
+@app.post("/stock/list")
+async def api_list_stock(data: dict):
+    return await state.list_stock_for_sale(
+        data["room_id"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"]
+    )
+    
+
+@app.post("/api/estate/offer")
+async def offer_estate(req: OfferRequest):
+    return await state.receive_estate_offer(
+        req.room_id, req.buyer, req.estate_name, req.offer_price
+    )
+
+@app.post("/api/estate/accept_offer")
+async def accept_estate_offer(req: AcceptOfferRequest):
+    return await state.finalize_estate_transaction(
+        req.room_id, req.seller, req.estate_name, req.chosen_buyer, req.price
+    )
+    
+@app.post("/api/estate/list_for_sale")
+async def api_list_estate(data: dict):
+    return await state.list_estate_for_sale(
+        data["room_id"], data["seller"], data["estate"], data["price"]
+    )

@@ -64,7 +64,8 @@ quiz_popup = None  # Global quiz popup state
 scroll_offset = 0
 saving_popup = None
 saving_input_text = ""
-
+stock_prices = {}  #
+estate_prices = {}  
 
 
 # ====================================
@@ -212,6 +213,7 @@ async def listen_ws(room_id, player_name):
                         "stocks": message.get("stocks", []),
                         "estate_effect": message.get("estate_effect", {})
                     }     
+              
                 elif message["type"] == "portfolio_update":
                     if message.get("portfolio"):
                         ws_portfolio = message["portfolio"]
@@ -245,6 +247,7 @@ async def listen_ws(room_id, player_name):
                         ws_portfolio = message.get("owner_portfolio", {})
 
                     print("💸 Rent Transaction received:", raw_notification)
+        
                 elif message["type"] == "saving_prompt":
                     max_amount = message["max_amount"]
                     saving_popup, saving_input_text
@@ -266,8 +269,46 @@ async def listen_ws(room_id, player_name):
                         "player_name": player_name,
                         "withdraw": True
                     }
-                            
+                
+                elif message["type"] == "stock_for_sale":
+                    msg = f"{message['seller']} is selling {message['quantity']} shares of {message['stock']} at ${message['price_per_unit']} each"
+                    add_notification(msg)
+                    if message["seller"] != player_name:
+                        threading.Thread(target=show_buy_stock_from_player_popup, args=(
+                            room_id, player_name, message["stock"], message["seller"], message["quantity"], message["price_per_unit"])).start()
 
+                elif message["type"] == "estate_sold":
+                    msg = f"{message['seller']} sold {message['estate']} to {message['buyer']} for ${message['price']}"
+                    add_notification(msg)
+
+                elif message["type"] == "stock_sold":
+                    msg = f"{message['seller']} sold {message['quantity']} {message['stock']} to {message['buyer']} at ${message['price_per_unit']} each"
+                    add_notification(msg)      
+                    
+                elif message["type"] == "estate_for_sale":
+                    msg = f"{message['seller']} is selling {message['estate']} for ${message['price']}"
+                    add_notification(msg)
+
+                    if message["seller"] != player_name:
+                        threading.Thread(target=show_estate_offer_popup, args=(
+                            room_id, player_name, message["estate"],
+                            message["seller"], message["price"])).start()
+                elif message["type"] == "estate_offers_list" and message["seller"] == player_name:
+                    offers = message["offers"]  # List of {"buyer": ..., "price": ...}
+                    threading.Thread(target=show_select_offer_popup, args=(
+                        message["room_id"], player_name, message["estate"], offers)).start()
+                elif message["type"] == "estate_offer_received" and message.get("estate"):
+                    offers = message["offers"]
+                    threading.Thread(target=show_select_offer_popup, args=(
+                        room_id, player_name, message["estate"], offers)).start()
+                
+                elif message["type"] == "stock_for_sale":
+                    msg = f"{message['seller']} is selling {message['quantity']} shares of {message['stock']} at ${message['price_per_unit']} each"
+                    add_notification(msg)
+                    if message["seller"] != player_name:
+                        threading.Thread(target=show_buy_stock_from_player_popup, args=(
+                            room_id, player_name, message["stock"], message["seller"], message["quantity"], message["price_per_unit"])).start()
+                                                    
                 # Update host determination logic
                 is_host_runtime = determine_host(player_name, ws_joined_players)
 
@@ -279,6 +320,41 @@ async def listen_ws(room_id, player_name):
             except Exception as e:
                 print(f"Unexpected WebSocket error: {e}")
 
+def show_buy_stock_from_player_popup(room_id, player_name, stock_name, seller, max_quantity, price_per_unit):
+    import tkinter as tk
+    def on_submit():
+        try:
+            qty = int(quantity_entry.get())
+            if qty < 1 or qty > max_quantity:
+                print("Quantity out of range.")
+                return
+            root.destroy()
+            payload = {
+                "room_id": room_id,
+                "buyer": player_name,
+                "seller": seller,
+                "stock": stock_name,
+                "quantity": qty,
+                "price_per_unit": float(price_per_unit)
+            }
+            url = f"http://{SERVER_HOST}:8000/api/stock/buy_from_player"
+            response = requests.post(url, json=payload)
+            print(response.json().get("message", "Buy stock response"))
+        except Exception as e:
+            print(f"❌ Error buying stock: {e}")
+
+    root = tk.Tk()
+    root.title("Buy Stock From Player")
+    root.geometry("300x180")
+    tk.Label(root, text=f"Buy {stock_name} from {seller}").pack()
+    tk.Label(root, text=f"Price per unit: ${price_per_unit}").pack()
+    tk.Label(root, text=f"Max quantity: {max_quantity}").pack()
+    tk.Label(root, text="Quantity:").pack()
+    quantity_entry = tk.Entry(root)
+    quantity_entry.pack()
+    tk.Button(root, text="Buy", command=on_submit).pack(pady=10)
+    root.mainloop()
+
 
 # Helper function to enable purchase buttons
 def enable_purchase_button(item_type):
@@ -287,6 +363,32 @@ def enable_purchase_button(item_type):
     elif item_type == "stock":
         print("Enable stock purchase button")  # Replace with actual UI logic
 
+def show_offer_popup(self, seller, estate_name, min_price):
+    def submit_offer():
+        try:
+            offer = float(entry.get())
+            if offer >= min_price:
+                self.send_json({
+                    "action": "notify",
+                    "target": "server",
+                    "type": "estate_offer",
+                    "buyer": self.player_name,
+                    "estate": estate_name,
+                    "price": offer,
+                    "room_id": self.room_id
+                })
+                top.destroy()
+            else:
+                messagebox.showerror("Lỗi", f"Giá phải >= {min_price}")
+        except:
+            messagebox.showerror("Lỗi", "Nhập số hợp lệ")
+
+    top = tk.Toplevel(self.root)
+    top.title("Gửi đề nghị mua")
+    tk.Label(top, text=f"Mua {estate_name} từ {seller}, giá gốc ${min_price}").pack()
+    entry = tk.Entry(top)
+    entry.pack()
+    tk.Button(top, text="Gửi đề nghị", command=submit_offer).pack()
 
 # ===================================
 #  DRAW BOX                        ||
@@ -300,55 +402,226 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
     if not items:
         return
 
-    # Always display the latest notifications
     max_items = (rect.height - 40) // 25
-    start_index = max(0, len(items) - max_items)
-    end_index = len(items)
 
     if title == "Notification":
+        start_index = max(0, len(items) - max_items)
+        end_index = len(items)
         y_offset = rect.y + 40
-        max_width = rect.width - 20 
         for i, item in enumerate(items[start_index:end_index]):
-            # Split the item into multiple lines if it contains '\n'
-            wrapped_lines = textwrap.wrap(item, width=38)  # Wrap here instead of earlier
+            wrapped_lines = textwrap.wrap(item, width=38)
             for line in wrapped_lines:
                 surface.blit(font.render(line, True, BLACK), (rect.x + 10, y_offset))
                 y_offset += 20
+
     elif title == "Leaderboard":
+        start_index = max(0, len(items) - max_items)
+        end_index = len(items)
         for i, item in enumerate(items[start_index:end_index]):
             if isinstance(item, dict):
-                text = f"{item.get('player', 'Unknown')} - Net Worth: ${item.get('net_worth', 'Unknown'):.2f}"
+                text = f"{item.get('player', 'Unknown')} - Net Worth: ${item.get('net_worth', 0):,.2f}"
             else:
                 text = str(item)
             surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
+
     else:
-        if is_dict:
+        if is_dict and isinstance(items, dict):
             lines = []
+
             def fmt_money(key, value):
                 return f"{key.replace('_', ' ').capitalize()}: ${float(value):,.2f}"
 
             for key in ["cash", "saving", "net_worth", "current_position", "round_played", "stocks", "estates"]:
                 val = items.get(key, "-")
-                if isinstance(val, (int, float)) and key != "current_position":
-                    line = fmt_money(key, val)
-                elif isinstance(val, dict):
-                    line = f"{key.capitalize()}: {len(val)}"
-                elif isinstance(val, list):
-                    line = f"{key.capitalize()}: {len(val)}"
-                else:
-                    line = f"{key.replace('_', ' ').capitalize()}: {val}"
-                lines.append(line)
 
+                if isinstance(val, (int, float)) and key not in ["current_position", "round_played"]:
+                    lines.append(fmt_money(key, val))
+
+                elif key == "current_position":
+                    tile_index = int(val)
+                    tile_name = TILE_MAP[tile_index] if tile_index < len(TILE_MAP) else "Unknown"
+                    lines.append(f"Current position: {tile_name} ({tile_index})")
+
+                elif key == "round_played":
+                    lines.append(f"Round played: {val}")
+
+                elif key == "stocks" and isinstance(val, dict):
+                    lines.append("Stocks:")
+                    if not val:
+                        lines.append(" - None")
+                    else:
+                        for stock_name, quantity in val.items():
+                            price = stock_prices.get(stock_name, 0)
+                            total_value = round(quantity * price, 2)
+                            lines.append(f" - {stock_name}: {quantity} @ ${price:.2f} → ${total_value:.2f}")
+
+                elif key == "estates" and isinstance(val, list):
+                    lines.append("Estates:")
+                    if not val:
+                        lines.append(" - None")
+                    else:
+                        for estate_name in val:
+                            price = estate_prices.get(estate_name, 0)
+                            lines.append(f" - {estate_name} (${price:.2f})")
+
+            # Render the lines
             for i, line in enumerate(lines):
                 text = font.render(line, True, BLACK)
                 surface.blit(text, (rect.x + 10, rect.y + 40 + i * 22))
-        else:
+
+        elif isinstance(items, list):
+            start_index = max(0, len(items) - max_items)
+            end_index = len(items)
             for i, item in enumerate(items[start_index:end_index]):
                 if isinstance(item, dict):
                     text = f"{item.get('player_name', 'Unknown')} - Position: {item.get('current_position', 'Unknown')}"
                 else:
                     text = str(item)
                 surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
+
+# ===================================
+#  DRAW SELL ESTATE POPUP          ||
+# ===================================
+def show_sell_estate_popup(room_id, player_name):
+    import tkinter as tk
+
+    def on_submit():
+        estate_name = estate_entry.get()
+        price = price_entry.get()
+        root.destroy()
+        try:
+            payload = {
+                "room_id": room_id,
+                "seller": player_name,
+                "estate": estate_name,
+                "price": float(price)
+            }
+            url = f"http://{SERVER_HOST}:8000/api/estate/list_for_sale"
+            response = requests.post(url, json=payload)
+            print(response.json().get("message", "Unknown response"))
+        except Exception as e:
+            print(f"❌ Sell estate error: {e}")
+
+    root = tk.Tk()
+    root.title("Sell Estate")
+    root.geometry("300x200")
+    tk.Label(root, text="Estate Name:").pack()
+    estate_entry = tk.Entry(root)
+    estate_entry.pack()
+    tk.Label(root, text="Asking Price ($):").pack()
+    price_entry = tk.Entry(root)
+    price_entry.pack()
+    tk.Button(root, text="Sell", command=on_submit).pack(pady=10)
+    root.mainloop()
+
+
+# ===================================
+#  SELECT OFFER POPUP          ||
+# ===================================
+def show_select_offer_popup(room_id, seller, estate, offers):
+    import tkinter as tk
+
+    def accept_offer(buyer, price):
+        root.destroy()
+        payload = {
+            "room_id": room_id,
+            "seller": seller,
+            "chosen_buyer": buyer,
+            "estate_name": estate,
+            "price": price
+        }
+        url = f"http://{SERVER_HOST}:8000/api/estate/accept_offer"
+        try:
+            response = requests.post(url, json=payload)
+            print(response.json().get("message", "Offer accepted."))
+        except Exception as e:
+            print(f"❌ Error accepting offer: {e}")
+
+    root = tk.Tk()
+    root.title("Select Offer")
+    root.geometry("350x300")
+    tk.Label(root, text=f"Select offer for {estate}:").pack()
+
+    for offer in offers:
+        text = f"{offer['buyer']} offered ${offer['price']}"
+        tk.Button(root, text=text, command=lambda o=offer: accept_offer(o["buyer"], o["price"])).pack(pady=2)
+
+    root.mainloop()
+
+# ===================================
+#  DRAW OFFER POPUP          ||
+# ===================================
+def show_estate_offer_popup(room_id, player_name, estate_name, seller, asking_price):
+    import tkinter as tk
+
+    def on_submit():
+        try:
+            offer = float(entry.get())
+            if offer < asking_price:
+                print("Offer must be at least asking price.")
+                return
+            root.destroy()
+            payload = {
+                "room_id": room_id,
+                "buyer": player_name,
+                "estate_name": estate_name,      # PHẢI LÀ "estate_name"
+                "offer_price": offer,
+            }
+            url = f"http://{SERVER_HOST}:8000/api/estate/offer"
+            response = requests.post(url, json=payload)
+            print(response.json().get("message", "Sent offer."))
+        except Exception as e:
+            print(f"❌ Error submitting offer: {e}")
+
+    root = tk.Tk()
+    root.title("Make Offer")
+    root.geometry("300x150")
+    tk.Label(root, text=f"{estate_name} listed at ${asking_price}\nEnter your offer:").pack()
+    entry = tk.Entry(root)
+    entry.pack()
+    tk.Button(root, text="Submit", command=on_submit).pack(pady=10)
+    root.mainloop()
+
+
+# ===================================
+#  DRAW STOCK ESTATE POPUP          ||
+# ===================================
+def show_sell_stock_popup(room_id, player_name):
+    import tkinter as tk
+
+    def on_submit():
+        stock = stock_entry.get()
+        quantity = quantity_entry.get()
+        price = price_entry.get()
+        root.destroy()
+        try:
+            payload = {
+                "room_id": room_id,
+                "seller": player_name,
+                "stock": stock,
+                "quantity": int(quantity),
+                "price_per_unit": float(price)
+            }
+            url = f"http://{SERVER_HOST}:8000/api/stock/list_for_sale"
+            response = requests.post(url, json=payload)
+            print(response.json().get("message", "Unknown response"))
+        except Exception as e:
+            print(f"❌ Sell stock error: {e}")
+
+    root = tk.Tk()
+    root.title("Sell Stock")
+    root.geometry("300x250")
+    tk.Label(root, text="Stock Name:").pack()
+    stock_entry = tk.Entry(root)
+    stock_entry.pack()
+    tk.Label(root, text="Quantity:").pack()
+    quantity_entry = tk.Entry(root)
+    quantity_entry.pack()
+    tk.Label(root, text="Price Per Unit ($):").pack()
+    price_entry = tk.Entry(root)
+    price_entry.pack()
+    tk.Button(root, text="Sell", command=on_submit).pack(pady=10)
+    root.mainloop()
 
 
 # ===================================
@@ -509,8 +782,7 @@ def show_buy_popup(room_id, player_name):
 
     def on_buy_estate():
         root.destroy()
-        asyncio.run(send_buy_request(room_id, player_name))
-
+        threading.Thread(target=lambda: asyncio.run(send_buy_request(room_id, player_name))).start()
     def on_buy_stock():
         root.destroy()
         show_stock_purchase_popup(room_id, player_name)
@@ -730,9 +1002,25 @@ def handle_button_click(button_label, room_id, player_name):
         # asyncio.run(send_buy_request(room_id, player_name))
         show_buy_popup(room_id, player_name)
     elif button_label == "Sell":
-        # Logic to handle Sell action
         print("Sell button clicked")
-        asyncio.run(send_sell_request(room_id, player_name))
+        # Mở popup chọn bán gì
+        import tkinter as tk
+
+        def on_sell_estate():
+            root.destroy()
+            show_sell_estate_popup(room_id, player_name)
+
+        def on_sell_stock():
+            root.destroy()
+            show_sell_stock_popup(room_id, player_name)
+
+        root = tk.Tk()
+        root.title("Sell Options")
+        root.geometry("300x150")
+        tk.Label(root, text="What do you want to sell?").pack(pady=10)
+        tk.Button(root, text="Sell Estate", command=on_sell_estate).pack(pady=5)
+        tk.Button(root, text="Sell Stock", command=on_sell_stock).pack(pady=5)
+        root.mainloop()
     elif button_label == "Deposit":
         print("Deposit button clicked")
         # Trigger saving manually (optional - or just open a popup)
@@ -847,8 +1135,8 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
 
     threading.Thread(target=lambda: asyncio.run(listen_ws(room_id, player_name)), daemon=True).start()
     running = True
-    start_btn = pygame.Rect(850, 720, 120, 50)  # Adjusted position for the start button
-
+    start_btn = pygame.Rect(950, 720, 120, 50)  # Adjusted position for the start button
+    is_host_runtime = determine_host(player_name, joined_players)
     while running:
         screen.fill(WHITE)
         events = pygame.event.get()

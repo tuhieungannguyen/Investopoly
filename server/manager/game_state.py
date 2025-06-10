@@ -181,13 +181,17 @@ class GameState:
     def next_turn(self, room_id: str):
         members = self.rooms[room_id].roomMember
         manager = self.managers[room_id]
+        print(f"[Next Turn] Before: Played={manager.current_played}, Total={len(members)}")
         current_index = members.index(manager.current_player)
         next_index = (current_index + 1) % len(members)
         manager.current_player = members[next_index]
         manager.current_played += 1
+        
+        print(f"[Next Turn] After: Played={manager.current_played}, Round={manager.current_round}")
          
         # Nếu tất cả đã chơi trong round
         if manager.current_played >= len(members):
+            print("[Next Turn] 🔄 All played - distribute dividends")
             manager.current_round += 1
             manager.current_played = 0
             asyncio.create_task(self.distribute_stock_dividends(room_id))  
@@ -301,40 +305,52 @@ class GameState:
         ))
 
         # Cập nhật cổ phiếu
+        updated_stocks = []
         for effect in effect_stock:
             stock_name = effect["name"]
             delta = effect["amount"]
 
             if stock_name in self.stocks[room_id]:
                 stock = self.stocks[room_id][stock_name]
-                stock.now_price = max(1, round(stock.now_price * (1 + delta / 100), 2))  # Giá tối thiểu là 1
+                stock.now_price = max(1, round(stock.now_price * (1 + delta / 100), 2))
+                updated_stocks.append({
+                    **stock.dict(),
+                    "base_price": stock.start_price
+                })
 
         # Cập nhật bất động sản
+        updated_estates = []
         for estate in self.estates[room_id]:
-            if effect_estate.get("value") != 0:
+            changed = False
+            if effect_estate.get("value", 0) != 0:
                 estate.price = max(1, round(estate.price * (1 + effect_estate["value"] / 100), 2))
-            if effect_estate.get("rent") != 0:
+                changed = True
+            if effect_estate.get("rent", 0) != 0:
                 estate.rent_price = max(1, round(estate.rent_price * (1 + effect_estate["rent"] / 100), 2))
+                changed = True
+            if changed:
+                updated_estates.append({
+                    "name": estate.name,
+                    "price": estate.price,
+                    "rent_price": estate.rent_price
+                })
 
-        # Cập nhật tài sản ròng cho tất cả người chơi
+        # Cập nhật tài sản ròng và gửi portfolio
         for p in self.players[room_id].values():
             p.net_worth = self.calculate_net_worth(room_id, p.player_name)
+            asyncio.create_task(self.manager.send_to_player(room_id, p.player_name, {
+                "type": "portfolio_update",
+                "portfolio": p.dict()
+            }))
 
-        # Cập nhật bảng xếp hạng
         self.update_leaderboard(room_id)
 
         # Broadcast đến cả phòng
         asyncio.create_task(self.manager.broadcast(room_id, {
             "type": "shock_event",
-            "message": f"Shock Event: {name} - {description}",
-            "stocks": [
-                {
-                    **self.stocks[room_id][s["name"]].dict(),
-                    "base_price": self.stocks[room_id][s["name"]].start_price
-                }
-                for s in effect_stock if s["name"] in self.stocks[room_id]
-            ],
-            "estate_effect": effect_estate
+            "message": f"⚡ Shock Event: {name} - {description}",
+            "stocks": updated_stocks,
+            "updated_estates": updated_estates
         }))
 
         return f"Shock Event Triggered: {name}"
@@ -551,7 +567,113 @@ class GameState:
                 if est.name == estate_name:
                     est.home_level += 1
                     break
+    
+    async def list_estate_for_sale(self, room_id: str, seller: str, estate_name: str, asking_price: float):
+    # Kiểm tra sở hữu
+        player = self.players[room_id][seller]
+        if estate_name not in player.estates:
+            return {"success": False, "message": "Bạn không sở hữu bất động sản này."}
+        
+        estate = next((e for e in self.estates[room_id] if e.name == estate_name), None)
+        if not estate:
+            return {"success": False, "message": "Không tìm thấy bất động sản."}
 
+        # Broadcast để mọi người đấu giá hoặc mua
+        await self.manager.broadcast(room_id, {
+            "type": "estate_for_sale",
+            "message": f"{seller} is selling {estate_name} for ${asking_price}",
+            "seller": seller,
+            "estate": estate_name,
+            "price": asking_price
+        })
+
+        return {"success": True, "message": "Estate listed for sale."}
+    
+    async def buy_estate_from_player(self, room_id: str, buyer: str, seller: str, estate_name: str, offered_price: float):
+        buyer_player = self.players[room_id][buyer]
+        seller_player = self.players[room_id][seller]
+
+        if buyer_player.cash < offered_price:
+            return {"success": False, "message": "Bạn không đủ tiền để mua."}
+
+        estate = next((e for e in self.estates[room_id] if e.name == estate_name and e.owner_name == seller), None)
+        if not estate:
+            return {"success": False, "message": "Không tìm thấy bất động sản cần bán."}
+
+        # Giao dịch
+        buyer_player.cash -= offered_price
+        seller_player.cash += offered_price
+
+        buyer_player.estates.append(estate.name)
+        seller_player.estates.remove(estate.name)
+        estate.owner_name = buyer
+
+        # Cập nhật tài sản
+        buyer_player.net_worth = self.calculate_net_worth(room_id, buyer)
+        seller_player.net_worth = self.calculate_net_worth(room_id, seller)
+        self.update_leaderboard(room_id)
+
+        # Broadcast kết quả
+        await self.manager.broadcast(room_id, {
+            "type": "estate_sold",
+            "message": f"{seller} sold {estate_name} to {buyer} for ${offered_price}",
+            "buyer": buyer,
+            "seller": seller,
+            "estate": estate_name,
+            "price": offered_price
+        })
+
+        # Gửi cập nhật portfolio
+        for name in [buyer, seller]:
+            await self.manager.send_to_player(room_id, name, {
+                "type": "portfolio_update",
+                "portfolio": self.players[room_id][name].dict()
+            })
+
+        return {"success": True, "message": f"Bạn đã mua {estate_name} với giá ${offered_price}"}
+        
+    async def receive_estate_offer(self, room_id, buyer, estate_name, offer_price):
+    # Lưu vào biến tạm thời nếu chưa có
+        if not hasattr(self, "estate_offers"):
+            self.estate_offers = {}
+        
+        key = (room_id, estate_name)
+        if key not in self.estate_offers:
+            self.estate_offers[key] = []
+
+        self.estate_offers[key].append({
+            "buyer": buyer,
+            "price": offer_price
+        })
+
+        # Gửi thông báo về cho người bán
+        estate = next((e for e in self.estates[room_id] if e.name == estate_name), None)
+        seller = estate.owner_name if estate else None
+        if seller:
+            await self.manager.send_to_player(room_id, seller, {
+                "type": "estate_offer_received",
+                "estate": estate_name,
+                "offers": self.estate_offers[key]
+            })
+
+        return {"success": True, "message": "Offer sent to seller."}
+    
+    async def finalize_estate_transaction(self, room_id, seller, estate_name, chosen_buyer, price):
+        key = (room_id, estate_name)
+        if key not in self.estate_offers:
+            return {"success": False, "message": "Không có offer nào được gửi."}
+
+        offers = self.estate_offers[key]
+        offer = next((o for o in offers if o["buyer"] == chosen_buyer), None)
+
+        if not offer:
+            return {"success": False, "message": "Không tìm thấy offer từ người mua này."}
+
+        # Giao dịch
+        return await self.buy_estate_from_player(room_id, buyer=chosen_buyer, seller=seller,
+                                        estate_name=estate_name, offered_price=price)
+
+   
     # ########################################
     #           STOCK
     # ########################################
@@ -684,6 +806,63 @@ class GameState:
             })
 
             self.stock_revenue[room_id][stock_name] = 0  # Reset
+
+    async def list_stock_for_sale(self, room_id: str, seller: str, stock_name: str, quantity: int, price_per_unit: float):
+        player = self.players[room_id][seller]
+        if player.stocks.get(stock_name, 0) < quantity:
+            return {"success": False, "message": "Bạn không có đủ cổ phiếu để bán."}
+
+        await self.manager.broadcast(room_id, {
+            "type": "stock_for_sale",
+            "message": f"{seller} is selling {quantity} shares of {stock_name} at ${price_per_unit}/unit",
+            "stock": stock_name,
+            "seller": seller,
+            "quantity": quantity,
+            "price_per_unit": price_per_unit
+        })
+
+        return {"success": True, "message": "Stock listed for sale."}
+
+    
+    async def buy_stock_from_player(self, room_id: str, buyer: str, seller: str, stock_name: str, quantity: int, price_per_unit: float):
+        buyer_player = self.players[room_id][buyer]
+        seller_player = self.players[room_id][seller]
+
+        total_price = quantity * price_per_unit
+        if buyer_player.cash < total_price:
+            return {"success": False, "message": "Không đủ tiền để mua cổ phiếu."}
+        if seller_player.stocks.get(stock_name, 0) < quantity:
+            return {"success": False, "message": "Người bán không có đủ cổ phiếu."}
+
+        # Giao dịch
+        buyer_player.cash -= total_price
+        seller_player.cash += total_price
+
+        seller_player.stocks[stock_name] -= quantity
+        buyer_player.stocks[stock_name] = buyer_player.stocks.get(stock_name, 0) + quantity
+
+        buyer_player.net_worth = self.calculate_net_worth(room_id, buyer)
+        seller_player.net_worth = self.calculate_net_worth(room_id, seller)
+        self.update_leaderboard(room_id)
+
+        # Broadcast giao dịch
+        await self.manager.broadcast(room_id, {
+            "type": "stock_sold",
+            "message": f"{seller} sold {quantity} of {stock_name} to {buyer} at ${price_per_unit}/unit",
+            "stock": stock_name,
+            "buyer": buyer,
+            "seller": seller,
+            "quantity": quantity,
+            "price_per_unit": price_per_unit
+        })
+
+        for name in [buyer, seller]:
+            asyncio.create_task(self.manager.send_to_player(room_id, name, {
+                "type": "portfolio_update",
+                "portfolio": self.players[room_id][name].dict()
+            }))
+
+        return {"success": True, "message": "Stock purchase successful"}
 
     
     # ########################################
@@ -912,9 +1091,9 @@ class GameState:
             return self.players[room_id][player_name].current_position
         return None
     
-# #######################################
-#        STATISTICS
-# #######################################
+    # #######################################
+    #        STATISTICS
+    # #######################################
     def print_game_state(self, room_id: str):
         if room_id not in self.rooms:
             print(f"❌ Room {room_id} không tồn tại.")
