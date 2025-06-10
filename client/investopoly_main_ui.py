@@ -16,8 +16,9 @@ pygame.init()
 screen = pygame.display.set_mode((1200, 800))
 pygame.display.set_caption("Investopoly - Main Game UI")
 clock = pygame.time.Clock()
-font = pygame.font.SysFont('Arial', 20)
-font_title = pygame.font.SysFont('Arial', 26, bold=True)
+font_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/CutePixel.ttf'))
+font = pygame.font.Font(font_path, 20)
+font_title = pygame.font.Font(font_path, 26)
 
 # Màu
 WHITE = (255, 255, 255)
@@ -41,11 +42,10 @@ WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
 top_bar = pygame.Rect(20, 20, 1160, 50)
 # top_bar = pygame.Rect(x, y , chieu ngang, chieu doc)
 map_area = pygame.Rect(20, 80, 850, 600)
-event_box = pygame.Rect(630, 80, 300, 250)
-leaderboard_box = pygame.Rect(630, 350, 550, 330)
-portfolio_box = pygame.Rect(950, 80, 230, 250)
-action_bar = pygame.Rect(20, 700, 1160, 70)
-
+event_box = pygame.Rect(168, 230, 402, 400)
+leaderboard_box = pygame.Rect(740, 80, 450, 235)
+portfolio_box = pygame.Rect(740, 335, 450, 285)
+action_bar = pygame.Rect(740, 620, 335, 50)
 
 
 # ws variable
@@ -68,13 +68,28 @@ stock_prices = {}  #
 estate_prices = {}  
 
 
+########################################################################
+## IMAGE
+########################################################################
+topbar_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/bar.png'))
+topbar_image = pygame.image.load(topbar_image_path).convert_alpha()
+topbar_image = pygame.transform.scale(topbar_image, (1160, 50)) 
+
+profile_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/profile.png'))
+profile_image = pygame.image.load(profile_image_path).convert_alpha()
+profile_image = pygame.transform.scale(profile_image, (portfolio_box.width, portfolio_box.height))
+
+
+notification_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/noti_1.png'))
+noti_image = pygame.image.load(notification_image_path).convert_alpha()
+noti_image = pygame.transform.scale(noti_image, (event_box.width, event_box.height))
 # ====================================
 # ADD NOTIFICATION                  ||
 # ====================================
 def add_notification(notification):
     global ws_notifications
     # Ensure the latest notification is always added and displayed
-    if len(ws_notifications) >= 5:
+    if len(ws_notifications) >= 15:
         ws_notifications.pop(0)  # Remove the oldest notification
     ws_notifications.append(notification)  # Add the new notification
 
@@ -395,10 +410,20 @@ def show_offer_popup(self, seller, estate_name, min_price):
 # ===================================
 def draw_box(rect, title, surface, items=None, is_dict=False):
     global scroll_offset
-    pygame.draw.rect(surface, LIGHT_GRAY, rect)
-    pygame.draw.rect(surface, BLACK, rect, 2)
+    # pygame.draw.rect(surface, LIGHT_GRAY, rect)
+    # pygame.draw.rect(surface, BLACK, rect, 2)
     surface.blit(font_title.render(title, True, BLACK), (rect.x + 10, rect.y + 10))
-
+    
+    if title == "Portfolio":
+        # Vẽ nền là hình ảnh thay vì khung mặc định
+        surface.blit(profile_image, (rect.x, rect.y))
+    elif title == "Notification":
+        surface.blit(noti_image, (rect.x, rect.y))
+    else:
+        pygame.draw.rect(surface, LIGHT_GRAY, rect)
+        pygame.draw.rect(surface, BLACK, rect, 2)
+        surface.blit(font_title.render(title, True, BLACK), (rect.x + 10, rect.y + 10))
+        
     if not items:
         return
 
@@ -407,11 +432,11 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
     if title == "Notification":
         start_index = max(0, len(items) - max_items)
         end_index = len(items)
-        y_offset = rect.y + 40
+        y_offset = rect.y + 70
         for i, item in enumerate(items[start_index:end_index]):
-            wrapped_lines = textwrap.wrap(item, width=38)
+            wrapped_lines = textwrap.wrap(item, width=50)
             for line in wrapped_lines:
-                surface.blit(font.render(line, True, BLACK), (rect.x + 10, y_offset))
+                surface.blit(font.render(line, True, BLACK), (rect.x + 20, y_offset))
                 y_offset += 20
 
     elif title == "Leaderboard":
@@ -442,8 +467,8 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
                     tile_name = TILE_MAP[tile_index] if tile_index < len(TILE_MAP) else "Unknown"
                     lines.append(f"Current position: {tile_name} ({tile_index})")
 
-                elif key == "round_played":
-                    lines.append(f"Round played: {val}")
+                # elif key == "round_played":
+                    # lines.append(f"Round played: {val}")
 
                 elif key == "stocks" and isinstance(val, dict):
                     lines.append("Stocks:")
@@ -465,9 +490,10 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
                             lines.append(f" - {estate_name} (${price:.2f})")
 
             # Render the lines
-            for i, line in enumerate(lines):
-                text = font.render(line, True, BLACK)
-                surface.blit(text, (rect.x + 10, rect.y + 40 + i * 22))
+                    y_start = rect.y + 40 if title != "Portfolio" else rect.y + 60
+                    for i, line in enumerate(lines):
+                        text = font.render(line, True, BLACK)
+                        surface.blit(text, (rect.x + 20, y_start + i * 22))
 
         elif isinstance(items, list):
             start_index = max(0, len(items) - max_items)
@@ -479,6 +505,96 @@ def draw_box(rect, title, surface, items=None, is_dict=False):
                     text = str(item)
                 surface.blit(font.render(text, True, BLACK), (rect.x + 10, rect.y + 40 + i * 25))
 
+
+# ===================================
+#  DRAW CHART                      ||
+# ===================================
+
+def draw_leaderboard_chart(surface, rect, leaderboard_data):
+    if not leaderboard_data:
+        return
+
+    # Clear background
+    # pygame.draw.rect(surface, LIGHT_GRAY, rect)
+    # pygame.draw.rect(surface, BLACK, rect, 2)
+
+    # Load avatars
+    shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
+    avatars = [pygame.image.load(os.path.join(shared_path, f"{i+1}.png")).convert_alpha()
+               for i in range(len(leaderboard_data))]
+
+    # Color config (the order must match the player index)
+    bar_colors = [(92, 150, 92), (18, 51, 86), (250, 175, 64), (217, 113, 66),(98, 26, 29), (127, 63, 151)]
+ 
+
+    max_width = rect.width
+    max_height = rect.height
+    
+    # Calculate dynamic bar width and spacing based on number of players (4-6 players)
+    num_players = len(leaderboard_data)
+    total_spacing = max_width * 0.1  # 10% of width for outer margins
+    available_width = max_width - total_spacing
+    
+    # Calculate spacing between bars (smaller spacing for more players)
+    spacing_between = available_width * 0.15 / (num_players - 1) if num_players > 1 else 0
+    
+    # Calculate bar width
+    bar_width = (available_width - spacing_between * (num_players - 1)) / num_players
+    bar_width = max(40, min(80, int(bar_width)))  # Limit bar width between 40-80px
+    
+    # Recalculate spacing to center everything
+    total_bars_width = bar_width * num_players + spacing_between * (num_players - 1)
+    start_x_offset = (max_width - total_bars_width) / 2
+    
+    top_padding = 40
+    bottom_padding = 40
+
+    # Handle both tuple and dictionary formats
+    try:
+        # Check if data contains tuples or dictionaries
+        first_item = leaderboard_data[0]
+        if isinstance(first_item, tuple):
+            # Assume tuple format: (player_name, net_worth) or similar
+            max_networth = max(item[1] if len(item) > 1 else 0 for item in leaderboard_data)
+        else:
+            # Dictionary format
+            max_networth = max(item.get("net_worth", 0) for item in leaderboard_data)
+    except (IndexError, ValueError, TypeError):
+        max_networth = 0
+    
+    scale = (max_height - top_padding - bottom_padding - 60) / max_networth if max_networth > 0 else 1
+
+    for idx, item in enumerate(leaderboard_data):
+        x = rect.x + start_x_offset + idx * (bar_width + spacing_between)
+        
+        # Handle both tuple and dictionary formats
+        if isinstance(item, tuple):
+            # Assume tuple format: (player_name, net_worth)
+            player_name = item[0] if len(item) > 0 else f"P{idx+1}"
+            networth = item[1] if len(item) > 1 else 0
+        else:
+            # Dictionary format
+            networth = item.get("net_worth", 0)
+            player_name = item.get("player", f"P{idx+1}")
+
+        bar_height = int(networth * scale)
+        y = rect.y + rect.height - bottom_padding - bar_height
+
+        # Draw bar
+        pygame.draw.rect(surface, bar_colors[idx % len(bar_colors)],
+                         (x, y, bar_width, bar_height))
+
+        # Draw avatar on top
+        avatar = pygame.transform.scale(avatars[idx], (40, 40))
+        surface.blit(avatar, (x + (bar_width - 40)//2, y - 60 ))
+
+        # Draw networth
+        net_text = font.render(f"${networth:,.0f}", True, bar_colors[idx % len(bar_colors)])
+        surface.blit(net_text, (x + (bar_width - net_text.get_width()) // 2, y - 20))
+
+        # Draw name below
+        name_text = font.render(player_name, True, bar_colors[idx % len(bar_colors)])
+        surface.blit(name_text, (x + (bar_width - name_text.get_width()) // 2, rect.y + rect.height - 30))
 # ===================================
 #  DRAW SELL ESTATE POPUP          ||
 # ===================================
@@ -668,11 +784,35 @@ def draw_quiz_popup(surface, quiz_data, room_id, player_name):
 #  DRAW TOP BAR                    ||
 # ===================================
 def draw_top_bar(surface, room, player, round):
-    pygame.draw.rect(surface, BLUE, top_bar)
-    pygame.draw.rect(surface, BLACK, top_bar, 2)
-    label = font_title.render(f"Room: {room} | Player: {player} | Round: {round}", True, WHITE)
-    surface.blit(label, (top_bar.x + 20, top_bar.y + 10))
+    # Vẽ hình ảnh nền topbar
+    surface.blit(topbar_image, (top_bar.x, top_bar.y))
 
+    # Hiển thị thông tin trên thanh bar
+    room_text = font_title.render(f"ROOM {room}", True, WHITE)
+    player_text = font_title.render(f"PLAYER {player}", True, WHITE)
+    round_text = font_title.render(f"ROUND {round}", True, WHITE)
+
+    # Vị trí text trên thanh bar (dựa trên layout của hình bạn gửi)
+    surface.blit(room_text, (top_bar.x + 30, top_bar.y + 12))
+    surface.blit(round_text, (top_bar.x + 950, top_bar.y + 12))
+    # Vẽ avatar của người chơi bên cạnh "PLAYER ..."
+    if ws_joined_players:
+        # Tìm index của player
+        player_index = next((i for i, p in enumerate(ws_joined_players) if p.get("player_name") == player), None)
+        if player_index is not None:
+            shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/avt'))
+            avatar_path = os.path.join(shared_path, f"{player_index + 1}.png")
+            if os.path.exists(avatar_path):
+                avatar_image = pygame.image.load(avatar_path).convert_alpha()
+                avatar_image = pygame.transform.scale(avatar_image, (30, 30))  # Kích thước nhỏ gọn
+
+                # Vị trí avatar + chữ
+                avatar_x = top_bar.x + 470
+                avatar_y = top_bar.y + 10
+                surface.blit(avatar_image, (avatar_x, avatar_y))
+
+                # Vẽ tên cạnh avatar (cách phải ra 40px)
+                surface.blit(player_text, (avatar_x + 40, avatar_y + 5))
 
 # ==================================
 # SEND BUY REQUEST                 ||
@@ -1078,7 +1218,7 @@ def draw_map_with_players(surface, players):
     # Load the board image as the map
     board_image_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/ui/board_new.png'))
     board_image = pygame.image.load(board_image_path)
-    board_image = pygame.transform.scale(board_image, (600, 600))
+    board_image = pygame.transform.scale(board_image, (700, 700))
     surface.blit(board_image, (map_area.x, map_area.y))
 
     # Load avatars using absolute path
@@ -1088,30 +1228,30 @@ def draw_map_with_players(surface, players):
     ]
 
     # Define tile dimensions based on the scaled board
-    corner_tile_size = (129, 129)  # Corner tiles
-    vertical_tile_size = (129, 86)  # Vertical tiles
-    horizontal_tile_size = (86, 129)  # Horizontal tiles
+    corner_tile_size = (151, 151)  # Corner tiles
+    vertical_tile_size = (151, 101)  # Vertical tiles
+    horizontal_tile_size = (101, 151)  # Horizontal tiles
 
     for idx, player in enumerate(players):
         if isinstance(player, dict) and "current_position" in player:
             position = int(player["current_position"])
 
             if position == 0:  # GO
-                x, y = map_area.x, map_area.y + 600 - corner_tile_size[1]
+                x, y = map_area.x, map_area.y + 700 - corner_tile_size[1]
             elif position < 5:  # Left column (going up)
-                x, y = map_area.x, map_area.y + 600 - (position * vertical_tile_size[1]) - corner_tile_size[1]
+                x, y = map_area.x, map_area.y + 700 - (position * vertical_tile_size[1]) - corner_tile_size[1]
             elif position == 5:  # Jail Visit
                 x, y = map_area.x, map_area.y
             elif position < 10:  # Top row (going right)
                 x, y = map_area.x + ((position - 6) * horizontal_tile_size[0]) + corner_tile_size[0], map_area.y
             elif position == 10:  # Quizzes (Education)
-                x, y = map_area.x + 600 - corner_tile_size[0], map_area.y
+                x, y = map_area.x + 700 - corner_tile_size[0], map_area.y
             elif position < 15:  # Right column (going down)
-                x, y = map_area.x + 600 - vertical_tile_size[0], map_area.y + ((position - 11) * vertical_tile_size[1]) + corner_tile_size[1]
+                x, y = map_area.x + 700 - vertical_tile_size[0], map_area.y + ((position - 11) * vertical_tile_size[1]) + corner_tile_size[1]
             elif position == 15:  # Jail (Challenge)
-                x, y = map_area.x + 600 - corner_tile_size[0], map_area.y + 600 - corner_tile_size[1]
+                x, y = map_area.x + 700 - corner_tile_size[0], map_area.y + 700 - corner_tile_size[1]
             else:  # Bottom row (going left)
-                x, y = map_area.x + 600 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 600 - horizontal_tile_size[1]
+                x, y = map_area.x + 700 - ((position - 15) * horizontal_tile_size[0]) - corner_tile_size[0], map_area.y + 700 - horizontal_tile_size[1]
 
             
             avatar = pygame.transform.scale(avatars[idx], (corner_tile_size[0] // 3, corner_tile_size[1] // 3))
@@ -1183,7 +1323,7 @@ def run_ui(room_id, player_name, joined_players, _, leaderboard=None, portfolio=
         draw_top_bar(screen, room_id, player_name, current_round)
         draw_map_with_players(screen, ws_joined_players or joined_players)
         draw_box(event_box, "Notification", screen, ws_notifications)  # Display notifications
-        draw_box(leaderboard_box, "Leaderboard", screen, ws_leaderboard or leaderboard)
+        draw_leaderboard_chart(screen, leaderboard_box, ws_leaderboard or leaderboard)
         draw_box(portfolio_box, "Portfolio", screen, ws_portfolio or portfolio, is_dict=True)
         draw_action_buttons(screen, room_id, player_name)
 
