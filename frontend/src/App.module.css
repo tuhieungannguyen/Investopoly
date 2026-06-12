@@ -1,0 +1,127 @@
+.shell {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.brandCluster,
+.statusCluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand {
+  width: min(260px, 42vw);
+  height: 48px;
+  object-fit: contain;
+}
+
+.room,
+.meta {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.room {
+  color: var(--green-strong);
+  font-weight: 800;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.statusCluster {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  color: #3c4a42;
+  font-size: 0.95rem;
+}
+
+.status {
+  min-width: 92px;
+  padding: 5px 10px;
+  border: 1px solid #b8c4bc;
+  border-radius: 999px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.status[data-state="connected"] {
+  border-color: #3f8f69;
+  background: #e3f6ec;
+  color: #17613f;
+}
+
+.status[data-state="error"] {
+  border-color: #cf5f53;
+  background: #ffe9e5;
+  color: #933527;
+}
+
+.errorBanner {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d97a67;
+  border-radius: 8px;
+  background: #fff0ec;
+  color: #892d20;
+  text-align: left;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(380px, 500px);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.boardColumn {
+  min-width: 0;
+}
+
+.sideColumn {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    padding: 10px;
+  }
+
+  .topbar,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .statusCluster {
+    justify-content: flex-start;
+  }
+
+  .layout {
+    display: grid;
+  }
+}

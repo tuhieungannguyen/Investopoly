@@ -1,0 +1,193 @@
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.panel {
+  min-width: 0;
+  min-height: 150px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.leaderboardPanel {
+  border-color: rgba(217, 170, 42, 0.46);
+  background: linear-gradient(180deg, #fffdf6 0%, #ffffff 70%);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.panelHeader h2 {
+  margin: 0;
+  color: #24362d;
+  font-family: "CutePixel", Inter, sans-serif;
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+
+.panelHeader span {
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f0f5ef;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard,
+.portfolio,
+.notifications {
+  display: grid;
+  gap: 8px;
+}
+
+.rankRow {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 7px;
+  border: 1px solid #e5eadf;
+  border-radius: 8px;
+  background: #fbfdfb;
+}
+
+.rankRow[data-rank="1"] {
+  border-color: rgba(217, 170, 42, 0.8);
+  background: #fff7dc;
+}
+
+.rankRow[data-rank="2"] {
+  background: #f4f6f2;
+}
+
+.rankRow[data-rank="3"] {
+  background: #fff0e4;
+}
+
+.rankBadge {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #241b08;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.rankMain {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rankMain strong,
+.portfolio strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rankTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5eadf;
+}
+
+.rankTrack i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--gold));
+}
+
+.rankRow em {
+  color: var(--green);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.portfolio {
+  grid-template-columns: 1fr 1fr;
+}
+
+.portfolio div {
+  display: grid;
+  gap: 3px;
+  min-height: 46px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f6f9f6;
+  border: 1px solid transparent;
+}
+
+.portfolio div:hover {
+  border-color: #cbd9ce;
+}
+
+.portfolio span {
+  color: #6a786f;
+  font-size: 0.78rem;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.roll {
+  display: grid;
+  gap: 6px;
+}
+
+.roll strong {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--red);
+  color: #ffffff;
+  font-family: "CutePixel", Inter, sans-serif;
+  font-size: 1.8rem;
+}
+
+.roll small {
+  color: #66746b;
+}
+
+.notifications {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.notifications p,
+.empty {
+  margin: 0;
+  color: #596960;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 560px) {
+  .grid,
+  .portfolio {
+    grid-template-columns: 1fr;
+  }
+}

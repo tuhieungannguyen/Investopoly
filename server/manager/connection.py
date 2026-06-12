@@ -7,13 +7,16 @@ class ConnectionManager:
         await websocket.accept()
         if room_id not in self.active_rooms:
             self.active_rooms[room_id] = {"players": [], "sockets": {}}
-        self.active_rooms[room_id]["players"].append(player_name)
+        if player_name not in self.active_rooms[room_id]["players"]:
+            self.active_rooms[room_id]["players"].append(player_name)
         self.active_rooms[room_id]["sockets"][player_name] = websocket
 
     def disconnect(self, room_id: str, player_name: str):
         try:
             if room_id in self.active_rooms and player_name in self.active_rooms[room_id]["sockets"]:
                 del self.active_rooms[room_id]["sockets"][player_name]
+                if player_name in self.active_rooms[room_id]["players"]:
+                    self.active_rooms[room_id]["players"].remove(player_name)
 
                 # Nếu phòng không còn người → có thể cleanup
                 if not self.active_rooms[room_id]["sockets"]:
@@ -29,3 +32,8 @@ class ConnectionManager:
     async def send_to_player(self, room_id: str, player_name: str, message: dict):
         if room_id in self.active_rooms and player_name in self.active_rooms[room_id]["sockets"]:
             await self.active_rooms[room_id]["sockets"][player_name].send_json(message)
+
+    async def broadcast_to_all(self, message: dict):
+        for room in self.active_rooms.values():
+            for ws in room["sockets"].values():
+                await ws.send_json(message)

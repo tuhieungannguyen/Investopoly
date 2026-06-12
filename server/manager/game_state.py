@@ -1,15 +1,27 @@
 import asyncio
+import builtins
 from random import randint
 import random
-from typing import Dict, List, Optional
+from typing import Awaitable, Dict, List, Optional
 from shared.constants import CHANCE_EVENTS, GO_REWARD, SHOCK_EVENTS, START_MONEY, STOCKS, TILE_MAP,ESTATES, QUIZ_BANK, REWARD_AMOUNT, TAX_AMOUNT
 from shared.model import Room, Player, GameManager, Estate, Stock, JailStatus, SavingRecord, EventRecord, ChanceLog, Transaction
-from server.manager.connection import ConnectionManager
+from server.manager.event_sink import EventSink, NullEventSink
+
+
+def print(*args, **kwargs):
+    try:
+        builtins.print(*args, **kwargs)
+    except UnicodeEncodeError:
+        safe_args = [
+            str(arg).encode("ascii", errors="replace").decode("ascii")
+            for arg in args
+        ]
+        builtins.print(*safe_args, **kwargs)
 
 class GameState:
     
     # Khởi tạo các biến lưu trữ trạng thái game
-    def __init__(self, manager : ConnectionManager):
+    def __init__(self, event_sink: Optional[EventSink] = None):
         self.rooms: Dict[str, Room] = {}
         self.players: Dict[str, Dict[str, Player]] = {}
         self.managers: Dict[str, GameManager] = {}
@@ -20,8 +32,16 @@ class GameState:
         self.events: Dict[str, List[EventRecord]] = {}
         self.chances: Dict[str, List[ChanceLog]] = {}
         self.transactions: Dict[str, List[Transaction]] = {}
-        self.manager = manager
+        self.event_sink = event_sink or NullEventSink()
+        self.manager = self.event_sink
         self.stock_revenue: Dict[str, Dict[str, float]] = {}  
+
+    def _dispatch(self, awaitable: Awaitable[None]):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(awaitable)
+        return loop.create_task(awaitable)
         
         
     def init_room(self, room_id: str, members: List[str]):
@@ -95,11 +115,11 @@ class GameState:
 
             # Update the leaderboard
             self.update_leaderboard(room_id)
-            asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+            self._dispatch(self.manager.send_to_player(room_id, player_name, {
             "type": "portfolio_update",
-            "portfolio": player.dict()
+            "portfolio": player.model_dump()
             }))
-            asyncio.create_task(self.manager.broadcast(room_id, {
+            self._dispatch(self.manager.broadcast(room_id, {
                     "type": "passed_go",
                     "message": f"{player_name} passed GO and received ${GO_REWARD}",
                     "player": player_name,
@@ -139,28 +159,12 @@ class GameState:
         event = self.trigger_chance_if_applicable(room_id, player_name)
         
         if event:
-            from server.manager.connection import ConnectionManager
-            message = f"{player_name} triggered Chance: {event['name']}"
-            try:
-                # Nếu bạn có sẵn self.manager thì dùng, nếu không khởi tạo lại
-                if hasattr(self, 'manager'):
-                    await self.manager.broadcast(room_id, {
-                        "type": "chance_event",
-                        "message": message,
-                        "player": player_name,
-                        "event": event
-                    })
-                else:
-                    # fallback nếu self.manager không tồn tại
-                    manager = ConnectionManager()
-                    await manager.broadcast(room_id, {
-                        "type": "chance_event",
-                        "message": message,
-                        "player": player_name,
-                        "event": event
-                    })
-            except Exception as e:
-                print(f"[Broadcast Error]: {e}")
+            await self.manager.broadcast(room_id, {
+                "type": "chance_event",
+                "message": f"{player_name} triggered Chance: {event['name']}",
+                "player": player_name,
+                "event": event
+            })
 
         tile = TILE_MAP[new_position]
         return {
@@ -195,8 +199,8 @@ class GameState:
             print("[Next Turn] 🔄 All played - distribute dividends")
             manager.current_round += 1
             manager.current_played = 0
-            asyncio.create_task(self.distribute_stock_dividends(room_id))  
-            asyncio.create_task(self.check_and_handle_round_completion(room_id))
+            self._dispatch(self.distribute_stock_dividends(room_id))  
+            self._dispatch(self.check_and_handle_round_completion(room_id))
 
             
     def add_player_to_room(self, room_id: str, player_name: str):
@@ -217,7 +221,7 @@ class GameState:
         return {
             "round": self.managers[room_id].current_round,
             "current_player": self.managers[room_id].current_player,
-            "players": {k: v.dict() for k, v in self.players[room_id].items()},
+            "players": {k: v.model_dump() for k, v in self.players[room_id].items()},
         }
     
     def start_game(self, room_id: str):
@@ -242,7 +246,7 @@ class GameState:
                 for name, qty in player.stocks.items()
                 if name in self.stocks[room_id]
             ])
-            estate_value = sum(e.value for e in self.estates[room_id] if e.owner == player.player_name)
+            estate_value = sum(e.price for e in self.estates[room_id] if e.owner_name == player.player_name)
 
             player.net_worth = self.calculate_net_worth(room_id,player.player_name)
 
@@ -380,7 +384,7 @@ class GameState:
                 stock = self.stocks[room_id][stock_name]
                 stock.now_price = max(1, round(stock.now_price * (1 + delta / 100), 2))
                 updated_stocks.append({
-                    **stock.dict(),
+                    **stock.model_dump(),
                     "base_price": stock.start_price
                 })
 
@@ -404,15 +408,15 @@ class GameState:
         # Cập nhật tài sản ròng và gửi portfolio
         for p in self.players[room_id].values():
             p.net_worth = self.calculate_net_worth(room_id, p.player_name)
-            asyncio.create_task(self.manager.send_to_player(room_id, p.player_name, {
+            self._dispatch(self.manager.send_to_player(room_id, p.player_name, {
                 "type": "portfolio_update",
-                "portfolio": p.dict()
+                "portfolio": p.model_dump()
             }))
 
         self.update_leaderboard(room_id)
 
         # Broadcast đến cả phòng
-        asyncio.create_task(self.manager.broadcast(room_id, {
+        self._dispatch(self.manager.broadcast(room_id, {
             "type": "shock_event",
             "message": f"⚡ Shock Event: {name} - {description}",
             "stocks": updated_stocks,
@@ -552,7 +556,7 @@ class GameState:
         # broadcast to all players
         self.update_leaderboard(room_id)
         message = f"{player_name} has purchased {tile_name} for ${estate.price}."
-        asyncio.create_task(self.manager.broadcast(room_id, {
+        self._dispatch(self.manager.broadcast(room_id, {
             "type": "estate_purchased",
             "player": player_name,
             "message": message,
@@ -562,9 +566,9 @@ class GameState:
         }))
         
         # send to player
-        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+        self._dispatch(self.manager.send_to_player(room_id, player_name, {
         "type": "portfolio_update",
-        "portfolio": player.dict()
+        "portfolio": player.model_dump()
         }))
 
         return {"success": True, "message": f"Transaction Successful"}
@@ -617,12 +621,12 @@ class GameState:
         # Gửi cập nhật portfolio cho cả 2
         await self.manager.send_to_player(room_id, player_name, {
             "type": "portfolio_update",
-            "portfolio": player.dict()
+            "portfolio": player.model_dump()
         })
 
         await self.manager.send_to_player(room_id, estate.owner_name, {
             "type": "portfolio_update",
-            "portfolio": owner.dict()
+            "portfolio": owner.model_dump()
         })
        
     def upgrade_estate(self, room_id: str, player_name: str, estate_name: str, upgrade_cost: float):
@@ -693,7 +697,7 @@ class GameState:
         for name in [buyer, seller]:
             await self.manager.send_to_player(room_id, name, {
                 "type": "portfolio_update",
-                "portfolio": self.players[room_id][name].dict()
+                "portfolio": self.players[room_id][name].model_dump()
             })
 
         return {"success": True, "message": f"Bạn đã mua {estate_name} với giá ${offered_price}"}
@@ -761,7 +765,7 @@ class GameState:
         # Check player's current holdings
         owned = player.stocks.get(stock.name, 0)
         if owned + quantity > stock.max_per_player:
-            return {"error": f"Cannot own more than {stock.max_per_player} units."}
+            return {"success": False, "message": f"Cannot own more than {stock.max_per_player} units."}
 
         total_price = stock.now_price * quantity
         if player.cash < total_price:
@@ -791,17 +795,17 @@ class GameState:
         self.update_leaderboard(room_id)
 
         # Broadcast
-        asyncio.create_task(self.manager.broadcast(room_id, {
+        self._dispatch(self.manager.broadcast(room_id, {
             "type": "stock_purchased",
             "message": f"{player_name} bought {quantity} of {stock.name} at ${round(old_price, 2)} each.",
-            "stock":  stock.dict(),
+            "stock":  stock.model_dump(),
             "player": player_name
         }))
 
         # Update portfolio
-        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+        self._dispatch(self.manager.send_to_player(room_id, player_name, {
             "type": "portfolio_update",
-            "portfolio": player.dict()
+            "portfolio": player.model_dump()
         }))
 
         return {"success": True, "message": f"Successfully bought {quantity} of {stock.name}."}
@@ -840,7 +844,7 @@ class GameState:
         })
         await self.manager.send_to_player(room_id, player_name, {
             "type": "portfolio_update",
-            "portfolio": player.dict()
+            "portfolio": player.model_dump()
         })
         
         
@@ -862,7 +866,7 @@ class GameState:
                     # Gửi portfolio update
                     await self.manager.send_to_player(room_id, player_name, {
                         "type": "portfolio_update",
-                        "portfolio": player.dict()
+                        "portfolio": player.model_dump()
                     })
 
             # Gửi broadcast cổ tức
@@ -925,9 +929,9 @@ class GameState:
         })
 
         for name in [buyer, seller]:
-            asyncio.create_task(self.manager.send_to_player(room_id, name, {
+            self._dispatch(self.manager.send_to_player(room_id, name, {
                 "type": "portfolio_update",
-                "portfolio": self.players[room_id][name].dict()
+                "portfolio": self.players[room_id][name].model_dump()
             }))
 
         return {"success": True, "message": "Stock purchase successful"}
@@ -938,7 +942,7 @@ class GameState:
     # ########################################
     def send_quiz_question(self, room_id: str, player_name: str):
         quiz = random.choice(QUIZ_BANK)
-        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+        self._dispatch(self.manager.send_to_player(room_id, player_name, {
             "type": "quiz_question",
             "question_id": quiz["id"],
             "question": quiz["question"],
@@ -967,7 +971,7 @@ class GameState:
         self.update_leaderboard(room_id)
 
         # Gửi thông báo đến tất cả người chơi
-        asyncio.create_task(self.manager.broadcast(room_id, {
+        self._dispatch(self.manager.broadcast(room_id, {
             "type": "quiz_result",
             "player": player_name,
             "correct": correct,
@@ -975,9 +979,9 @@ class GameState:
         }))
 
         # Cập nhật portfolio người chơi
-        asyncio.create_task(self.manager.send_to_player(room_id, player_name, {
+        self._dispatch(self.manager.send_to_player(room_id, player_name, {
             "type": "portfolio_update",
-            "portfolio": player.dict()
+            "portfolio": player.model_dump()
         }))
 
         return correct
@@ -1029,8 +1033,7 @@ class GameState:
                 SavingRecord(
                     owner=player_name,
                     amount=amount,
-                    round_deposit=current_round,
-                    round_withdraw=None,  # Chưa rút
+                    start_round=current_round,
                     end_round=current_round + 3,  # ✅ Thêm end_round
                     isSuccess=True  # ✅ Đang active
                 )
@@ -1081,7 +1084,7 @@ class GameState:
                 "message": f"Withdrawn ${total_received} (Interest: ${interest_earned})",
                 "amount": total_received,
                 "interest": interest_earned,
-                "portfolio": player.dict()
+                "portfolio": player.model_dump()
             }
         return {"success": False, "message": "No savings to withdraw."}
         
@@ -1149,7 +1152,7 @@ class GameState:
             # Gửi cập nhật portfolio
             await self.manager.send_to_player(room_id, player_name, {
                 "type": "portfolio_update",
-                "portfolio": player.dict()
+                "portfolio": player.model_dump()
             })
 
             # Gửi cập nhật leaderboard
@@ -1260,3 +1263,5 @@ class GameState:
             "players_played_this_round": manager.current_played,
             "total_players": len(self.rooms[room_id].roomMember)
     }
+
+

@@ -165,11 +165,14 @@ async def roll_dice(request: RollDiceRequest):
     })
 
     # Process tile effects
-    owner = state.get_tile_owner(room_id, tile)
+    owner = state.get_tile_owner(room_id, tile["name"])
     
     # Check if the player can buy the estate or stock
     can_buy_estate = not owner and state.get_tile_value(tile["name"]) > 0
-    can_buy_stock = tile["name"] in state.stocks[room_id] and state.stocks[room_id][tile["name"]].available > 0
+    can_buy_stock = any(
+        stock.position == state.players[room_id][player_name].current_position and stock.available_units > 0
+        for stock in state.stocks[room_id].values()
+    )
 
     # Mark the player as having played this round
     state.players[room_id][player_name].round_played = state.managers[room_id].current_round
@@ -225,7 +228,6 @@ async def get_status(room_id: str):
     if room_id not in state.rooms:
         return JSONResponse(status_code=404, content={"error": "Room not found"})
     
-    state.print_game_state(room_id)
     return state.get_state(room_id)
 
 @app.get("/debug/print_state/{room_id}")
@@ -290,15 +292,6 @@ async def buy_estate(body: BuyEstateRequest):
 
     # Process the purchase
     result = state.buy_estate(room_id, player_name)
-
-    if result["success"]:
-        # Broadcast the purchase to other players
-        await manager.broadcast(room_id, {
-            "type": "estate_purchased",
-            "player": player_name,
-            "message": result["message"],
-            "leaderboard": state.managers[room_id].leader_board
-        })
 
     return result
 
@@ -366,16 +359,6 @@ async def deposit_saving(
     return {"message": result["message"]}
 
 
-@app.post("/api/saving/deposit")
-async def deposit_saving(request: SavingDepositRequest):
-    result = state.process_saving_deposit(request.room_id, request.player_name, request.amount)
-    if result["success"]:
-        await state.manager.send_to_player(request.room_id, request.player_name, {
-            "type": "portfolio_update",
-            "portfolio": result["portfolio"]
-        })
-    return result
-
 @app.post("/api/stock/list_for_sale")
 async def api_list_stock(data: dict):
     return await state.list_stock_for_sale(data["room_id"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
@@ -383,10 +366,6 @@ async def api_list_stock(data: dict):
 @app.post("/api/stock/buy_from_player")
 async def api_buy_stock_from_player(data: dict):
     return await state.buy_stock_from_player(data["room_id"], data["buyer"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
-
-@app.post("/api/stock/buy_from_player")
-def api_buy_stock_from_player(data: dict):
-    return state.buy_stock_from_player(data["room_id"], data["buyer"], data["seller"], data["stock"], data["quantity"], data["price_per_unit"])
 
 @app.post("/stock/list")
 async def api_list_stock(data: dict):
@@ -498,6 +477,16 @@ async def reset_all_rooms():
     state.rooms.clear()
     state.players.clear()
     state.managers.clear()
+    state.estates.clear()
+    state.stocks.clear()
+    state.jails.clear()
+    state.saving_records.clear()
+    state.events.clear()
+    state.chances.clear()
+    state.transactions.clear()
+    state.stock_revenue.clear()
+    if hasattr(state, "estate_offers"):
+        state.estate_offers.clear()
 
     # Broadcast tới tất cả WebSocket (nếu cần)
     await manager.broadcast_to_all({
@@ -511,9 +500,21 @@ async def reset_specific_room(room_id: str):
     if room_id not in state.rooms:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    del state.rooms[room_id]
-    del state.players[room_id]
-    del state.managers[room_id]
+    state.rooms.pop(room_id, None)
+    state.players.pop(room_id, None)
+    state.managers.pop(room_id, None)
+    state.estates.pop(room_id, None)
+    state.stocks.pop(room_id, None)
+    state.jails.pop(room_id, None)
+    state.saving_records.pop(room_id, None)
+    state.events.pop(room_id, None)
+    state.chances.pop(room_id, None)
+    state.transactions.pop(room_id, None)
+    state.stock_revenue.pop(room_id, None)
+    if hasattr(state, "estate_offers"):
+        for key in list(state.estate_offers):
+            if key[0] == room_id:
+                del state.estate_offers[key]
 
     await manager.broadcast(room_id, {
         "type": "room_reset",
@@ -536,3 +537,4 @@ async def list_rooms():
         })
 
     return {"rooms": rooms_info}
+

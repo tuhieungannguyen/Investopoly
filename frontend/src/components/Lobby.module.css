@@ -1,0 +1,72 @@
+.lobby {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
+    url("/assets/ui/map.png") center / cover no-repeat;
+}
+
+.card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(42, 54, 45, 0.18);
+}
+
+.logo {
+  width: 100%;
+  max-height: 92px;
+  object-fit: contain;
+  margin-bottom: 4px;
+}
+
+.card label {
+  display: grid;
+  gap: 6px;
+  color: #48554d;
+  font-weight: 700;
+}
+
+.card input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #b8c5bd;
+  border-radius: 6px;
+  background: #fbfdfb;
+  color: #16221c;
+}
+
+.card button {
+  height: 46px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--green);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.card button:disabled {
+  background: #9aad9f;
+}
+
+.status,
+.error {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.status {
+  color: #66746b;
+  text-transform: capitalize;
+}
+
+.error {
+  color: #a93f2c;
+}

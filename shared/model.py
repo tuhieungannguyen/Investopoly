@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
 # Game Manage
@@ -11,18 +11,18 @@ class Player(BaseModel):
     player_name: str
     current_position: int
     cash: float
-    stocks: Dict[str, int] = {}
-    estates: List[str] = []
+    stocks: Dict[str, int] = Field(default_factory=dict)
+    estates: List[str] = Field(default_factory=list)
     saving: float
     net_worth: float
     round_played: int
-    pending_bonus: Optional[List[str]] = [] 
+    pending_bonus: Optional[List[str]] = Field(default_factory=list)
 
 class GameManager(BaseModel):
     current_round: int
     current_player: str
     current_played: int
-    leader_board: List[Dict[str, float]]
+    leader_board: List[Dict[str, float]] = Field(default_factory=list)
 
 # Property Manage
 class Estate(BaseModel):
@@ -35,7 +35,7 @@ class Estate(BaseModel):
 
 class Stock(BaseModel):
     name: str
-    owner_list: List[str] = []
+    owner_list: List[str] = Field(default_factory=list)
     industry: str
     start_price: float
     now_price: float

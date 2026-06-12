@@ -36,8 +36,8 @@ GREEN = (34, 139, 34)
 
 
 # --- Config ---
-SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
-# SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
+# SERVER_HOST = os.getenv('SERVER_HOST', 'duong.dat-jang.id.vn')
+SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 SERVER_PORT = os.getenv('SERVER_PORT', '8000')
 SERVER = f"http://{SERVER_HOST}:{SERVER_PORT}"
 WS_URL_BASE = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"

@@ -1,4 +1,6 @@
-from openai import BaseModel
+from pydantic import BaseModel
+
+
 class BuyStockRequest(BaseModel):
     room_id: str
     player_name: str
