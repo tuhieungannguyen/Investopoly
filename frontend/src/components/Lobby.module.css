@@ -11,8 +11,8 @@
 .card {
   width: min(420px, 100%);
   display: grid;
-  gap: 14px;
-  padding: 22px;
+  gap: 16px;
+  padding: 24px 30px 28px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
@@ -21,9 +21,9 @@
 
 .logo {
   width: 100%;
-  max-height: 92px;
+  max-height: 86px;
   object-fit: contain;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .card label {
@@ -35,7 +35,7 @@
 
 .card input {
   width: 100%;
-  height: 44px;
+  height: 42px;
   padding: 0 12px;
   border: 1px solid #b8c5bd;
   border-radius: 6px;
@@ -43,28 +43,55 @@
   color: #16221c;
 }
 
-.card button {
-  height: 46px;
+.imageButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: min(100%, 200px);
+  margin-top: 8px;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: var(--green);
-  color: #ffffff;
-  font-weight: 800;
+  background: transparent;
+  color: #fff5c4;
+  font-family: "CutePixel", Inter, sans-serif;
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.card button:disabled {
-  background: #9aad9f;
+.imageButton img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
 }
 
-.status,
+.imageButton span {
+  position: absolute;
+  transform: translateY(-1px);
+  text-shadow: 2px 2px 0 rgba(36, 61, 42, 0.72);
+}
+
+.imageButton:not(:disabled):hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.imageButton:focus-visible {
+  outline: 3px solid rgba(217, 170, 42, 0.85);
+  outline-offset: 3px;
+}
+
+.imageButton:disabled {
+  filter: saturate(0.85) brightness(0.96);
+  opacity: 0.72;
+}
+
 .error {
   margin: 0;
   font-size: 0.92rem;
-}
-
-.status {
-  color: #66746b;
-  text-transform: capitalize;
 }
 
 .error {

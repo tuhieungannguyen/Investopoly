@@ -48,20 +48,74 @@
   gap: 8px;
 }
 
-.optionGrid button,
-.row button {
-  min-height: 42px;
-  border: 1px solid #b7c5bc;
-  border-radius: 6px;
-  background: #f8fbf8;
-  color: #23342b;
-  font-weight: 800;
+.choiceButton,
+.imageButton,
+.imageTextButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff5c4;
+  font-family: "CutePixel", Inter, sans-serif;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.optionGrid button:hover,
-.row button:hover {
-  border-color: var(--green);
-  background: #ecf7f0;
+.choiceButton img,
+.imageButton img,
+.imageTextButton img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.choiceButton span,
+.imageTextButton span {
+  position: absolute;
+  max-width: calc(100% - 36px);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: 2px 2px 0 rgba(36, 61, 42, 0.65);
+  white-space: nowrap;
+}
+
+.choiceButton {
+  width: min(100%, 512px);
+  font-size: 0.84rem;
+}
+
+.choiceButton img {
+  width: 100%;
+  min-height: 48px;
+}
+
+.imageButton {
+  width: min(100%, 132px);
+}
+
+.imageTextButton {
+  width: min(100%, 150px);
+  font-size: 0.9rem;
+}
+
+.choiceButton:not(:disabled):hover,
+.imageButton:not(:disabled):hover,
+.imageTextButton:not(:disabled):hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.choiceButton:focus-visible,
+.imageButton:focus-visible,
+.imageTextButton:focus-visible {
+  outline: 3px solid rgba(217, 170, 42, 0.85);
+  outline-offset: 3px;
 }
 
 .row {

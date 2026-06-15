@@ -1,22 +1,44 @@
 .boardWrap {
-  width: min(100%, 760px, calc(100vh - 132px));
-  margin: 0 auto;
+  width: min(100%, 820px, calc(100vh - 136px));
 }
 
 .boardSurface {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-raised) url("/assets/ui/board_new.png") center / 100% 100% no-repeat;
-  box-shadow: var(--shadow);
+  background: url("/assets/ui/mapnoti.png") center / 100% 100% no-repeat;
+  image-rendering: pixelated;
   overflow: hidden;
+}
+
+.notificationBox {
+  position: absolute;
+  left: 22%;
+  top: 22%;
+  z-index: 1;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: 56%;
+  height: 56%;
+  padding: 88px 42px 36px;
+  color: #452818;
+  font-family: "CutePixel", Inter, sans-serif;
+  font-size: clamp(0.78rem, 1.25vw, 1rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.notificationBox p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .token {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   width: clamp(24px, 4vw, 38px);
   aspect-ratio: 1;
   border: 2px solid #ffffff;

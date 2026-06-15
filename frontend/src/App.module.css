@@ -1,77 +1,70 @@
 .shell {
   min-height: 100vh;
-  padding: 18px;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px 36px 24px;
+  background: #ffffff;
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1.35fr 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   min-height: 72px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--shadow);
+  padding: 8px 34px 10px;
+  background: url("/assets/ui/bar.png") center / 100% 100% no-repeat;
+  color: #f4fff0;
+  image-rendering: pixelated;
 }
 
-.brandCluster,
-.statusCluster {
+.hudItem {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
   min-width: 0;
+  font-family: "CutePixel", Inter, sans-serif;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.brand {
-  width: min(260px, 42vw);
-  height: 48px;
-  object-fit: contain;
+.hudItem:first-child {
+  justify-content: flex-start;
 }
 
-.room,
-.meta {
-  margin: 0;
+.hudItem:last-child {
+  justify-content: flex-end;
+}
+
+.hudItem span {
+  font-size: clamp(1rem, 1.8vw, 1.65rem);
+  font-weight: 900;
+}
+
+.hudItem strong {
+  min-width: 0;
+  max-width: 190px;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: clamp(1rem, 1.7vw, 1.5rem);
+  font-weight: 900;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.room {
-  color: var(--green-strong);
-  font-weight: 800;
-}
-
-.meta {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.statusCluster {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  color: #3c4a42;
-  font-size: 0.95rem;
-}
-
-.status {
-  min-width: 92px;
-  padding: 5px 10px;
-  border: 1px solid #b8c4bc;
-  border-radius: 999px;
-  text-align: center;
+.hudItem small {
+  color: #dcebd9;
+  font-size: clamp(0.72rem, 1vw, 0.92rem);
+  font-weight: 900;
   text-transform: capitalize;
 }
 
-.status[data-state="connected"] {
-  border-color: #3f8f69;
-  background: #e3f6ec;
-  color: #17613f;
+.hudItem small[data-state="connected"] {
+  color: #fff0a3;
 }
 
-.status[data-state="error"] {
-  border-color: #cf5f53;
-  background: #ffe9e5;
-  color: #933527;
+.hudItem small[data-state="error"] {
+  color: #ffc2b7;
 }
 
 .errorBanner {
@@ -87,10 +80,10 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(380px, 500px);
-  gap: 18px;
+  grid-template-columns: minmax(520px, 0.98fr) minmax(420px, 0.72fr);
+  gap: 28px;
   align-items: start;
-  margin-top: 18px;
+  margin-top: 24px;
 }
 
 .boardColumn {
@@ -99,12 +92,12 @@
 
 .sideColumn {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 @media (max-width: 980px) {
   .shell {
-    padding: 10px;
+    padding: 12px;
   }
 
   .topbar,
@@ -113,11 +106,13 @@
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+    gap: 4px;
+    padding: 10px 24px;
   }
 
-  .statusCluster {
+  .hudItem,
+  .hudItem:first-child,
+  .hudItem:last-child {
     justify-content: flex-start;
   }
 

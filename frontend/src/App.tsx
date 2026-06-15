@@ -79,19 +79,19 @@ function App() {
   return (
     <main className={styles.shell}>
       <header className={styles.topbar}>
-        <div className={styles.brandCluster}>
-          <img src="/assets/ui/INVESTOPOLY.png" alt="Investopoly" className={styles.brand} />
-          <div>
-            <p className={styles.room}>Room {roomId}</p>
-            <p className={styles.meta}>{playerName}</p>
-          </div>
+        <div className={styles.hudItem}>
+          <span>Room</span>
+          <strong>{roomId}</strong>
         </div>
-        <div className={styles.statusCluster}>
-          <span className={styles.status} data-state={connectionStatus}>
-            {connectionStatus}
-          </span>
-          <span>Round {currentRound ?? "-"}</span>
-          <span>{currentPlayer ? `${currentPlayer}'s turn` : "Waiting"}</span>
+        <div className={styles.hudItem}>
+          <span>Player</span>
+          <strong>{playerName}</strong>
+          <small data-state={connectionStatus}>{connectionStatus}</small>
+        </div>
+        <div className={styles.hudItem}>
+          <span>Round</span>
+          <strong>{currentRound ?? "-"}</strong>
+          <small>{currentPlayer ? `${currentPlayer}'s turn` : "Waiting"}</small>
         </div>
       </header>
 
@@ -103,7 +103,7 @@ function App() {
 
       <section className={styles.layout}>
         <div className={styles.boardColumn}>
-          <Board players={players} currentPlayer={currentPlayer} />
+          <Board players={players} currentPlayer={currentPlayer} notifications={notifications} />
         </div>
         <aside className={styles.sideColumn}>
           <Panels

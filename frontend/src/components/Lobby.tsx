@@ -39,10 +39,10 @@ export default function Lobby({ busy, error, status, onJoin }: Props) {
             required
           />
         </label>
-        <button disabled={busy || !roomId.trim() || !playerName.trim()}>
-          {busy ? "Connecting" : "Create or Join"}
+        <button className={styles.imageButton} disabled={busy || !roomId.trim() || !playerName.trim()}>
+          <img src="/assets/ui/button_1.png" alt="" aria-hidden="true" />
+          <span>{busy ? "Connecting" : "Join Room"}</span>
         </button>
-        <p className={styles.status}>{status}</p>
         {error && <p className={styles.error}>{error}</p>}
       </form>
     </main>

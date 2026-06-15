@@ -39,8 +39,13 @@ export default function SavingModal({ prompt }: Props) {
           />
         </label>
         <div className={styles.row}>
-          <button type="button" onClick={closeSavingPrompt}>Skip</button>
-          <button type="submit">Deposit</button>
+          <button className={styles.imageTextButton} type="button" onClick={closeSavingPrompt}>
+            <img src="/assets/ui/button_1.png" alt="" aria-hidden="true" />
+            <span>Skip</span>
+          </button>
+          <button className={styles.imageButton} type="submit" aria-label="Deposit">
+            <img src="/assets/ui/deposit.png" alt="" aria-hidden="true" />
+          </button>
         </div>
       </form>
     </div>

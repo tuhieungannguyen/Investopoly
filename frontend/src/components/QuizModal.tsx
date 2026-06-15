@@ -29,8 +29,9 @@ export default function QuizModal({ quiz, roomId, playerName }: Props) {
         <p>{quiz.question}</p>
         <div className={styles.optionGrid}>
           {quiz.options.map((option, index) => (
-            <button key={option} onClick={() => answer(index)}>
-              {option}
+            <button className={styles.choiceButton} key={option} onClick={() => answer(index)}>
+              <img src="/assets/ui/choice.png" alt="" aria-hidden="true" />
+              <span>{option}</span>
             </button>
           ))}
         </div>

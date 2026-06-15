@@ -5,6 +5,7 @@ import styles from "./Board.module.css";
 type Props = {
   players: BoardPlayer[];
   currentPlayer: string | null;
+  notifications: Array<{ id: number; text: string }>;
 };
 
 const TILE_CENTERS = [
@@ -34,10 +35,19 @@ function tilePosition(position: number) {
   return TILE_CENTERS[position] ?? TILE_CENTERS[0];
 }
 
-export default function Board({ players, currentPlayer }: Props) {
+export default function Board({ players, currentPlayer, notifications }: Props) {
+  const visibleNotifications = notifications.slice(-5).reverse();
+
   return (
     <div className={styles.boardWrap}>
       <div className={styles.boardSurface} aria-label="Investopoly board">
+        <div className={styles.notificationBox}>
+          {visibleNotifications.length ? (
+            visibleNotifications.map((item) => <p key={item.id}>{item.text}</p>)
+          ) : (
+            <p>Waiting for player actions...</p>
+          )}
+        </div>
         {players.map((player, index) => {
           const position = Number(player.current_position) || 0;
           const coords = tilePosition(position);
